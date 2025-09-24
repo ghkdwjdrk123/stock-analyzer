@@ -1,0 +1,342 @@
+---
+description: 공통 기능 (토큰 관리, 유틸리티 등)에 대한 상세 가이드 및 사용법
+globs: ["**/app/utils/token_manager.py", "**/manage_tokens.py", "**/test_token_manager.py", "**/app/brokers/*.py"]
+alwaysApply: false
+---
+
+# 공통 기능 가이드
+
+## 토큰 관리 (Token Management)
+
+### 개요
+증권사별 API 토큰을 파일 기반으로 관리하는 시스템입니다. 각 증권사마다 독립적인 토큰 파일을 사용하여 토큰 충돌을 방지하고 확장성을 높입니다.
+
+### API 최적화 전략
+
+#### 1. 단일 API 사용 원칙
+- **보유종목 조회 API** (`/uapi/domestic-stock/v1/trading/inquire-balance`) 하나로 모든 정보 획득
+- 계좌 잔고, 보유종목, 종목 가격 정보를 단일 호출로 조회
+- 불필요한 API 호출 최소화로 성능 향상
+
+#### 2. 환경변수 기반 설정 관리
+- 모든 API URL, TR_ID, 계좌 정보를 환경변수로 관리
+- 하드코딩 제거로 유지보수성 향상
+- 개발/운영 환경별 설정 분리 가능
+
+#### 3. 토큰 관리 최적화
+- 증권사별 독립적인 토큰 파일 관리
+- 자동 토큰 갱신 및 만료 처리
+- 토큰 충돌 방지 및 확장성 확보
+
+### 토큰 파일 구조
+```
+token/
+├── kis/              # 한국투자증권 토큰
+│   └── tokens.json   # KIS 전용 토큰 파일
+├── kiwoom/           # 키움증권 토큰
+│   └── tokens.json   # 키움 전용 토큰 파일
+└── [broker_name]/    # 기타 증권사 토큰
+    └── tokens.json   # 해당 증권사 전용 토큰 파일
+```
+
+### TokenManager 클래스
+
+#### 초기화
+```python
+from app.utils.token_manager import TokenManager
+
+# 특정 증권사 토큰 관리자
+kis_token_manager = TokenManager(broker_name="kis")
+kiwoom_token_manager = TokenManager(broker_name="kiwoom")
+
+# 레거시 지원 (전체 토큰 관리)
+token_manager = TokenManager()  # broker_name=None
+```
+
+#### 주요 메서드
+
+##### 토큰 저장
+```python
+# 토큰 저장
+token_manager.save_token(
+    access_token="your_access_token",
+    refresh_token="your_refresh_token",  # 선택사항
+    expires_in=86400  # 만료 시간 (초)
+)
+```
+
+##### 토큰 조회
+```python
+# 액세스 토큰 조회
+access_token = token_manager.get_access_token()
+
+# 리프레시 토큰 조회
+refresh_token = token_manager.get_refresh_token()
+
+# 전체 토큰 정보 조회
+token_info = token_manager.get_token()
+```
+
+##### 토큰 유효성 확인
+```python
+# 토큰 만료 여부 확인
+is_expired = token_manager.is_token_expired(threshold_seconds=300)
+
+# 토큰 유효성 확인
+is_valid = token_manager.is_token_valid()
+
+# 토큰 만료 정보 조회
+expiry_info = token_manager.get_token_expiry_info()
+```
+
+##### 토큰 삭제
+```python
+# 현재 토큰 삭제
+token_manager.delete_token()
+
+# 모든 토큰 삭제
+token_manager.clear_all_tokens()
+```
+
+##### 토큰 목록 조회
+```python
+# 저장된 토큰 목록
+tokens = token_manager.list_tokens()
+```
+
+### 토큰 파일 형식
+
+#### tokens.json 구조
+```json
+{
+  "current": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "expires_at": "2024-01-02T15:30:00.000000",
+    "created_at": "2024-01-01T15:30:00.000000",
+    "expires_in": 86400
+  }
+}
+```
+
+### 토큰 관리 유틸리티
+
+#### manage_tokens.py 사용법
+
+##### 토큰 상태 확인
+```bash
+# 모든 증권사 토큰 상태 조회
+python manage_tokens.py status
+```
+
+##### 토큰 삭제
+```bash
+# 모든 토큰 삭제
+python manage_tokens.py clear
+
+# 특정 증권사 토큰 삭제
+python manage_tokens.py delete "kis"
+python manage_tokens.py delete "kiwoom"
+```
+
+##### 도움말
+```bash
+python manage_tokens.py help
+```
+
+### 브로커별 토큰 관리
+
+#### KISBroker에서의 사용
+```python
+from app.brokers.kis_broker import KISBroker
+
+# KISBroker는 자동으로 TokenManager를 초기화
+kis_broker = KISBroker(credentials, api_settings)
+
+# 연결 시 토큰 자동 관리
+kis_broker.connect()  # 토큰 로드/갱신 자동 처리
+```
+
+#### 다른 브로커에서의 사용
+```python
+# 키움증권 브로커 예시
+class KiwoomBroker(BaseBroker):
+    def __init__(self, credentials, api_settings):
+        super().__init__(credentials, api_settings)
+        # 증권사별 토큰 관리자 초기화
+        self.token_manager = TokenManager(broker_name="kiwoom")
+```
+
+### 토큰 자동 갱신
+
+#### 만료 임계값 설정
+```python
+# 5분 전에 만료로 간주
+is_expired = token_manager.is_token_expired(threshold_seconds=300)
+```
+
+#### 자동 갱신 로직
+```python
+def get_valid_token(self):
+    """유효한 토큰 조회 (자동 갱신 포함)"""
+    if not self.token_manager.is_token_valid():
+        # 토큰이 만료되었으면 새로 발급
+        return self._get_access_token()
+    return self.token_manager.get_access_token()
+```
+
+### 보안 고려사항
+
+#### Git 제외 설정
+```gitignore
+# .gitignore에 포함
+token/                 # 모든 토큰 파일 제외
+*.token               # 토큰 확장자 파일 제외
+tokens.json           # 토큰 파일 제외
+```
+
+#### 파일 권한 설정
+```bash
+# 토큰 파일 권한 제한 (Linux/Mac)
+chmod 600 token/*/tokens.json
+```
+
+#### 환경변수 사용
+```python
+# 민감한 정보는 환경변수로 관리
+import os
+app_key = os.getenv('KIS_APP_KEY')
+app_secret = os.getenv('KIS_APP_SECRET')
+```
+
+### 에러 처리
+
+#### 일반적인 에러 상황
+1. **토큰 파일 없음**: 자동으로 새 토큰 발급
+2. **토큰 만료**: 자동으로 토큰 갱신
+3. **파일 권한 오류**: 로그 기록 후 예외 발생
+4. **JSON 파싱 오류**: 파일 재생성
+
+#### 에러 처리 예시
+```python
+try:
+    token_manager.save_token(access_token, refresh_token, expires_in)
+except PermissionError:
+    logger.error("토큰 파일 쓰기 권한이 없습니다.")
+    raise
+except Exception as e:
+    logger.error(f"토큰 저장 실패: {str(e)}")
+    raise
+```
+
+### 로깅
+
+#### 토큰 관련 로그
+```python
+# 토큰 저장
+logger.info(f"브로커 {self.broker_name}의 토큰이 저장되었습니다.")
+logger.info(f"토큰 만료 시간: {expires_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+# 토큰 로드
+logger.info(f"저장된 토큰을 사용합니다: {self.broker_name}")
+
+# 토큰 만료
+logger.warning(f"브로커 {self.broker_name}의 토큰이 만료되었습니다.")
+```
+
+### 테스트
+
+#### 토큰 관리 테스트
+```bash
+# 토큰 관리 기능 테스트
+python test_token_manager.py
+```
+
+#### 테스트 시나리오
+1. 토큰 저장/로드 테스트
+2. 토큰 만료 확인 테스트
+3. 토큰 삭제 테스트
+4. 파일 권한 테스트
+
+### 확장성
+
+#### 새로운 증권사 추가
+1. `token/[broker_name]/` 폴더 생성
+2. `TokenManager(broker_name="[broker_name]")` 사용
+3. 브로커 클래스에서 토큰 관리자 초기화
+
+#### 예시: NH투자증권 추가
+```python
+# 토큰 관리자 초기화
+nh_token_manager = TokenManager(broker_name="nh")
+
+# 브로커 클래스에서 사용
+class NHBroker(BaseBroker):
+    def __init__(self, credentials, api_settings):
+        super().__init__(credentials, api_settings)
+        self.token_manager = TokenManager(broker_name="nh")
+```
+
+### 성능 최적화
+
+#### 토큰 캐싱
+```python
+class TokenManager:
+    def __init__(self, broker_name: str = None):
+        self.broker_name = broker_name
+        self.tokens = {}  # 메모리 캐싱
+        self._load_tokens()  # 파일에서 로드
+```
+
+#### 지연 로딩
+```python
+def get_access_token(self) -> Optional[str]:
+    """액세스 토큰 조회 (지연 로딩)"""
+    if not self.tokens:
+        self._load_tokens()
+    return self.tokens.get('current', {}).get('access_token')
+```
+
+### 모니터링
+
+#### 토큰 상태 모니터링
+```python
+def get_token_health_status(self) -> Dict[str, Any]:
+    """토큰 상태 모니터링"""
+    token_info = self.get_token_expiry_info()
+    if not token_info:
+        return {"status": "no_token", "message": "토큰이 없습니다."}
+    
+    if token_info['is_expired']:
+        return {"status": "expired", "message": "토큰이 만료되었습니다."}
+    
+    remaining_hours = token_info['expires_in_hours']
+    if remaining_hours < 1:
+        return {"status": "warning", "message": f"토큰이 {remaining_hours:.1f}시간 후 만료됩니다."}
+    
+    return {"status": "healthy", "message": "토큰이 정상입니다."}
+```
+
+### 문제 해결
+
+#### 자주 발생하는 문제
+1. **토큰 파일 권한 오류**: 파일 권한 확인
+2. **JSON 파싱 오류**: 토큰 파일 삭제 후 재생성
+3. **토큰 만료**: 자동 갱신 또는 수동 갱신
+4. **네트워크 오류**: 재시도 로직 확인
+
+#### 디버깅 팁
+```python
+# 토큰 상태 상세 확인
+token_info = token_manager.get_token_expiry_info()
+print(f"토큰 상태: {token_info}")
+
+# 토큰 파일 경로 확인
+print(f"토큰 파일 경로: {token_manager.token_file_path}")
+
+# 토큰 파일 내용 확인
+import json
+with open(token_manager.token_file_path, 'r') as f:
+    content = json.load(f)
+    print(f"토큰 파일 내용: {content}")
+```

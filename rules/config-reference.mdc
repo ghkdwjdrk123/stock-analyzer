@@ -1,0 +1,555 @@
+---
+description: 설정 파일 참고 자료 - JSON 설정 구조, 환경변수 관리, 보안 설정, 설정 검증
+globs: ["**/config*.py", "**/config*.json", "**/.env*"]
+alwaysApply: false
+---
+
+# 설정 파일 참고 자료
+
+## config.json 구조
+
+### 1. 전체 구조
+```json
+{
+  "scheduler": { ... },
+  "database": { ... },
+  "brokers": [ ... ],
+  "logging": { ... },
+  "notifications": { ... },
+  "analysis": { ... }
+}
+```
+
+### 2. scheduler 설정
+```json
+{
+  "scheduler": {
+    "enabled": true,                    // 스케줄러 활성화 여부
+    "cron_expression": "0 30 18 * * 1-5",  // 매일 18:30 (평일만)
+    "timezone": "Asia/Seoul",           // 시간대
+    "max_retries": 3,                   // 최대 재시도 횟수
+    "retry_delay": 300                  // 재시도 간격 (초)
+  }
+}
+```
+
+**Cron 표현식 예시**:
+- `"0 30 18 * * 1-5"` - 매일 18:30 (평일)
+- `"0 0 9 * * 1"` - 매주 월요일 09:00
+- `"0 0 1 1 *"` - 매년 1월 1일 01:00
+
+### 3. database 설정
+```json
+{
+  "database": {
+    "type": "sqlite",                   // sqlite, postgresql
+    "path": "./data/stock_analyzer.db", // SQLite 파일 경로
+    "host": "localhost",                // PostgreSQL 호스트
+    "port": 5432,                       // PostgreSQL 포트
+    "name": "stock_analyzer",           // 데이터베이스명
+    "username": "encrypted_username",   // 암호화된 사용자명
+    "password": "encrypted_password",   // 암호화된 비밀번호
+    "backup_enabled": true,             // 자동 백업 활성화
+    "backup_interval_days": 7,          // 백업 주기
+    "backup_retention_days": 30         // 백업 보관 기간
+  }
+}
+```
+
+### 4. brokers 설정 (키움증권)
+```json
+{
+  "name": "키움증권",
+  "api_type": "kiwoom",
+  "enabled": true,
+  "platform": "windows",
+  "credentials": {
+    "user_id": "encrypted_user_id",
+    "password": "encrypted_password",
+    "cert_password": "encrypted_cert_password"
+  },
+  "accounts": [
+    {
+      "account_number": "12345678-01",
+      "account_name": "현금계좌",
+      "account_type": "cash"
+    },
+    {
+      "account_number": "12345678-02",
+      "account_name": "신용계좌", 
+      "account_type": "credit"
+    }
+  ],
+  "api_settings": {
+    "auto_login": true,                 // 자동 로그인
+    "timeout": 30,                      // 타임아웃 (초)
+    "retry_count": 3,                   // 재시도 횟수
+    "login_delay": 5,                   // 로그인 후 대기 시간
+    "api_call_delay": 0.2               // API 호출 간격 (초)
+  }
+}
+```
+
+### 5. brokers 설정 (한국투자증권)
+```json
+{
+  "name": "한국투자증권",
+  "api_type": "kis",
+  "enabled": true,
+  "platform": "cross",
+  "credentials": {
+    "app_key": "encrypted_app_key",
+    "app_secret": "encrypted_app_secret",
+    "access_token": "encrypted_access_token",
+    "refresh_token": "encrypted_refresh_token"
+  },
+  "accounts": [
+    {
+      "account_number": "98765432-01",
+      "account_name": "현금계좌",
+      "account_type": "cash"
+    }
+  ],
+  "api_settings": {
+    "base_url": "https://openapi.koreainvestment.com:9443",
+    "timeout": 30,
+    "retry_count": 3,
+    "rate_limit": {
+      "requests_per_second": 10,
+      "requests_per_minute": 100
+    },
+    "token_refresh_threshold": 300      // 토큰 갱신 임계값 (초)
+  }
+}
+```
+
+### 6. logging 설정
+```json
+{
+  "logging": {
+    "level": "INFO",                    // DEBUG, INFO, WARNING, ERROR
+    "file_path": "./logs/stock_analyzer.log",
+    "max_size_mb": 10,                  // 로그 파일 최대 크기
+    "backup_count": 5,                  // 백업 파일 개수
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "console_output": true,             // 콘솔 출력 여부
+    "sensitive_data_masking": true      // 민감정보 마스킹
+  }
+}
+```
+
+### 7. notifications 설정
+```json
+{
+  "notifications": {
+    "enabled": true,
+    "email": {
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "your_email@gmail.com",
+      "password": "encrypted_password",
+      "to_addresses": ["your_email@gmail.com"],
+      "subject_prefix": "[Stock Analyzer]"
+    },
+    "webhook": {
+      "enabled": false,
+      "url": "https://hooks.slack.com/your-webhook-url",
+      "timeout": 10
+    },
+    "alerts": {
+      "profit_loss_threshold": 5.0,     // 손익률 임계값 (%)
+      "volume_spike_threshold": 2.0,    // 거래량 급증 임계값 (배)
+      "daily_report": true              // 일일 리포트 발송
+    }
+  }
+}
+```
+
+### 8. analysis 설정
+```json
+{
+  "analysis": {
+    "profit_loss_threshold": 5.0,       // 손익률 임계값
+    "volume_analysis": true,             // 거래량 분석
+    "trend_analysis": true,              // 추세 분석
+    "risk_metrics": true,               // 리스크 지표
+    "portfolio_analysis": true,         // 포트폴리오 분석
+    "benchmark_index": "KOSPI",          // 벤치마크 지수
+    "analysis_periods": [               // 분석 기간
+      "1D", "1W", "1M", "3M", "6M", "1Y"
+    ],
+    "chart_settings": {
+      "default_period": "1M",
+      "chart_type": "line",              // line, candlestick, bar
+      "indicators": ["SMA", "EMA", "RSI"]
+    }
+  }
+}
+```
+
+## 설정 파일 관리
+
+### 1. 설정 로드
+```python
+import json
+import os
+from typing import Dict, Any
+
+class ConfigManager:
+    def __init__(self, config_path: str = "./config/config.json"):
+        self.config_path = config_path
+        self.config = self.load_config()
+    
+    def load_config(self) -> Dict[str, Any]:
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"설정 파일을 찾을 수 없습니다: {self.config_path}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"설정 파일 JSON 형식 오류: {e}")
+    
+    def get(self, key: str, default=None):
+        keys = key.split('.')
+        value = self.config
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+    
+    def set(self, key: str, value: Any):
+        keys = key.split('.')
+        config = self.config
+        for k in keys[:-1]:
+            if k not in config:
+                config[k] = {}
+            config = config[k]
+        config[keys[-1]] = value
+    
+    def save(self):
+        with open(self.config_path, 'w', encoding='utf-8') as f:
+            json.dump(self.config, f, indent=2, ensure_ascii=False)
+```
+
+### 2. 환경변수 오버라이드
+```python
+import os
+from dotenv import load_dotenv
+
+def load_config_with_env_override():
+    # env 파일 로드
+    load_dotenv('env')
+    
+    config = ConfigManager()
+    
+    # 환경변수로 설정 오버라이드
+    if os.getenv('DATABASE_TYPE'):
+        config.set('database.type', os.getenv('DATABASE_TYPE'))
+    
+    if os.getenv('LOG_LEVEL'):
+        config.set('logging.level', os.getenv('LOG_LEVEL'))
+    
+    # 한국투자증권 API 설정 오버라이드
+    if os.getenv('KIS_APP_KEY'):
+        for broker in config.get('brokers', []):
+            if broker.get('api_type') == 'kis':
+                broker.setdefault('credentials', {})['app_key'] = os.getenv('KIS_APP_KEY')
+                break
+    
+    if os.getenv('KIS_APP_SECRET'):
+        for broker in config.get('brokers', []):
+            if broker.get('api_type') == 'kis':
+                broker.setdefault('credentials', {})['app_secret'] = os.getenv('KIS_APP_SECRET')
+                break
+    
+    # 한국투자증권 계좌 정보 오버라이드
+    if os.getenv('KIS_ACCOUNT_8_PROD'):
+        for broker in config.get('brokers', []):
+            if broker.get('api_type') == 'kis':
+                broker.setdefault('api_settings', {})['account_8_prod'] = os.getenv('KIS_ACCOUNT_8_PROD')
+                break
+    
+    if os.getenv('KIS_ACCOUNT_PD_PROD'):
+        for broker in config.get('brokers', []):
+            if broker.get('api_type') == 'kis':
+                broker.setdefault('api_settings', {})['account_pd_prod'] = os.getenv('KIS_ACCOUNT_PD_PROD')
+                break
+    
+    # 한국투자증권 API 엔드포인트 오버라이드
+    if os.getenv('KIS_API_BALANCE'):
+        for broker in config.get('brokers', []):
+            if broker.get('api_type') == 'kis':
+                broker.setdefault('api_settings', {})['api_balance'] = os.getenv('KIS_API_BALANCE')
+                break
+    
+    return config
+```
+
+### 3. 환경변수 목록
+```bash
+# 데이터베이스 설정
+DATABASE_TYPE=sqlite
+DATABASE_PATH=./data/stock_analyzer.db
+
+# 로깅 설정
+LOG_LEVEL=INFO
+LOG_FILE=./logs/stock_analyzer.log
+
+# 한국투자증권 API (민감정보)
+KIS_APP_KEY=your_app_key_here
+KIS_APP_SECRET=your_app_secret_here
+
+# 한국투자증권 계좌 정보 (민감정보)
+KIS_ACCOUNT_8_PROD=your_account_8_digits_here
+KIS_ACCOUNT_PD_PROD=your_account_product_code_here
+
+# 한국투자증권 API 설정
+KIS_BASE_URL=https://openapi.koreainvestment.com:9443
+KIS_TR_ID_BALANCE=TTTC8434R
+KIS_ACCOUNT_PRODUCT_CODE=01
+KIS_MARKET_DIV_CODE=J
+
+# 한국투자증권 API 엔드포인트
+KIS_API_BALANCE=/uapi/domestic-stock/v1/trading/inquire-balance
+KIS_API_ACCOUNTS=/uapi/domestic-stock/v1/trading/inquire-balance
+
+# 이메일 알림 (민감정보)
+EMAIL_USERNAME=your_email@gmail.com
+EMAIL_PASSWORD=your_email_password
+```
+
+### 3. 설정 검증
+```python
+from jsonschema import validate, ValidationError
+
+CONFIG_SCHEMA = {
+    "type": "object",
+    "required": ["scheduler", "database", "brokers"],
+    "properties": {
+        "scheduler": {
+            "type": "object",
+            "required": ["enabled", "cron_expression"],
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "cron_expression": {"type": "string"},
+                "timezone": {"type": "string"}
+            }
+        },
+        "database": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+                "type": {"enum": ["sqlite", "postgresql"]},
+                "path": {"type": "string"}
+            }
+        }
+    }
+}
+
+def validate_config(config: Dict[str, Any]):
+    try:
+        validate(instance=config, schema=CONFIG_SCHEMA)
+        return True
+    except ValidationError as e:
+        raise ValueError(f"설정 파일 검증 실패: {e.message}")
+```
+
+## 보안 설정
+
+### 1. 민감정보 암호화
+```python
+from cryptography.fernet import Fernet
+import base64
+
+class CredentialEncryption:
+    def __init__(self, key: str = None):
+        if key:
+            self.cipher = Fernet(key.encode())
+        else:
+            # 환경변수에서 키 로드
+            key = os.getenv('ENCRYPTION_KEY')
+            if not key:
+                raise ValueError("ENCRYPTION_KEY 환경변수가 설정되지 않았습니다")
+            self.cipher = Fernet(key.encode())
+    
+    def encrypt(self, plaintext: str) -> str:
+        return self.cipher.encrypt(plaintext.encode()).decode()
+    
+    def decrypt(self, ciphertext: str) -> str:
+        return self.cipher.decrypt(ciphertext.encode()).decode()
+```
+
+### 2. 설정 파일 템플릿
+```json
+{
+  "scheduler": {
+    "enabled": true,
+    "cron_expression": "0 30 18 * * 1-5",
+    "timezone": "Asia/Seoul"
+  },
+  "database": {
+    "type": "sqlite",
+    "path": "./data/stock_analyzer.db",
+    "backup_enabled": true,
+    "backup_interval_days": 7
+  },
+  "brokers": [
+    {
+      "name": "키움증권",
+      "api_type": "kiwoom",
+      "enabled": true,
+      "platform": "windows",
+      "credentials": {
+        "user_id": "YOUR_USER_ID",
+        "password": "YOUR_PASSWORD",
+        "cert_password": "YOUR_CERT_PASSWORD"
+      },
+      "accounts": [
+        {
+          "account_number": "YOUR_ACCOUNT_NUMBER",
+          "account_name": "현금계좌",
+          "account_type": "cash"
+        }
+      ]
+    }
+  ],
+  "logging": {
+    "level": "INFO",
+    "file_path": "./logs/stock_analyzer.log",
+    "max_size_mb": 10,
+    "backup_count": 5
+  },
+  "notifications": {
+    "enabled": false,
+    "email": {
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "username": "YOUR_EMAIL@gmail.com",
+      "password": "YOUR_EMAIL_PASSWORD",
+      "to_addresses": ["YOUR_EMAIL@gmail.com"]
+    }
+  },
+  "analysis": {
+    "profit_loss_threshold": 5.0,
+    "volume_analysis": true,
+    "trend_analysis": true,
+    "risk_metrics": true
+  }
+}
+```
+
+## 설정 파일 예시 (config.example.json)
+
+```json
+{
+  "scheduler": {
+    "enabled": true,
+    "cron_expression": "0 30 18 * * 1-5",
+    "timezone": "Asia/Seoul",
+    "max_retries": 3,
+    "retry_delay": 300
+  },
+  "database": {
+    "type": "sqlite",
+    "path": "./data/stock_analyzer.db",
+    "backup_enabled": true,
+    "backup_interval_days": 7,
+    "backup_retention_days": 30
+  },
+  "brokers": [
+    {
+      "name": "키움증권",
+      "api_type": "kiwoom",
+      "enabled": true,
+      "platform": "windows",
+      "credentials": {
+        "user_id": "encrypted_user_id",
+        "password": "encrypted_password",
+        "cert_password": "encrypted_cert_password"
+      },
+      "accounts": [
+        {
+          "account_number": "12345678-01",
+          "account_name": "현금계좌",
+          "account_type": "cash"
+        }
+      ],
+      "api_settings": {
+        "auto_login": true,
+        "timeout": 30,
+        "retry_count": 3,
+        "login_delay": 5,
+        "api_call_delay": 0.2
+      }
+    },
+    {
+      "name": "한국투자증권",
+      "api_type": "kis",
+      "enabled": false,
+      "platform": "cross",
+      "credentials": {
+        "app_key": "encrypted_app_key",
+        "app_secret": "encrypted_app_secret"
+      },
+      "accounts": [],
+      "api_settings": {
+        "base_url": "https://openapi.koreainvestment.com:9443",
+        "timeout": 30,
+        "retry_count": 3,
+        "rate_limit": {
+          "requests_per_second": 10,
+          "requests_per_minute": 100
+        }
+      }
+    }
+  ],
+  "logging": {
+    "level": "INFO",
+    "file_path": "./logs/stock_analyzer.log",
+    "max_size_mb": 10,
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "console_output": true,
+    "sensitive_data_masking": true
+  },
+  "notifications": {
+    "enabled": true,
+    "email": {
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "your_email@gmail.com",
+      "password": "encrypted_password",
+      "to_addresses": ["your_email@gmail.com"],
+      "subject_prefix": "[Stock Analyzer]"
+    },
+    "webhook": {
+      "enabled": false,
+      "url": "https://hooks.slack.com/your-webhook-url",
+      "timeout": 10
+    },
+    "alerts": {
+      "profit_loss_threshold": 5.0,
+      "volume_spike_threshold": 2.0,
+      "daily_report": true
+    }
+  },
+  "analysis": {
+    "profit_loss_threshold": 5.0,
+    "volume_analysis": true,
+    "trend_analysis": true,
+    "risk_metrics": true,
+    "portfolio_analysis": true,
+    "benchmark_index": "KOSPI",
+    "analysis_periods": ["1D", "1W", "1M", "3M", "6M", "1Y"],
+    "chart_settings": {
+      "default_period": "1M",
+      "chart_type": "line",
+      "indicators": ["SMA", "EMA", "RSI"]
+    }
+  }
+}
+```

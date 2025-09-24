@@ -1,0 +1,633 @@
+---
+description: 구현 가이드 및 베스트 프랙티스 - 프로젝트 구조, 코딩 스타일, 테스트, 배포, 성능 최적화
+globs: ["**/*.py", "**/requirements.txt", "**/Dockerfile", "**/docker-compose.yml"]
+alwaysApply: false
+---
+
+# 구현 가이드 및 베스트 프랙티스
+
+## 프로젝트 구조 생성
+
+### 1. 기본 디렉토리 구조
+```bash
+mkdir -p stock-analyzer/{app/{models,services,brokers,api,utils,dashboard/{pages,components}},config,data,logs,tests}
+```
+
+### 2. Python 패키지 초기화
+```bash
+# 각 디렉토리에 __init__.py 생성
+find stock-analyzer -type d -exec touch {}/__init__.py \;
+```
+
+## 개발 환경 설정
+
+### 1. 가상환경 생성
+```bash
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# 또는
+venv\Scripts\activate  # Windows
+```
+
+### 2. requirements.txt 생성
+```txt
+# 웹 프레임워크
+fastapi==0.104.1
+uvicorn==0.24.0
+streamlit==1.28.1
+
+# 데이터베이스
+sqlalchemy==2.0.23
+alembic==1.12.1
+
+# 스케줄링
+apscheduler==3.10.4
+
+# 데이터 처리
+pandas==2.1.3
+numpy==1.25.2
+
+# 시각화
+plotly==5.17.0
+matplotlib==3.8.2
+
+# 키움증권 API
+pywin32==306
+
+# 한국투자증권 API
+requests==2.31.0
+websocket-client==1.6.4
+
+# 유틸리티
+python-dotenv==1.0.0
+cryptography==41.0.7
+jsonschema==4.19.2
+```
+
+### 3. 환경변수 설정 (.env)
+```env
+# 데이터베이스
+DATABASE_TYPE=sqlite
+DATABASE_PATH=./data/stock_analyzer.db
+
+# 로깅
+LOG_LEVEL=INFO
+LOG_FILE=./logs/stock_analyzer.log
+
+# 암호화
+ENCRYPTION_KEY=your_encryption_key_here
+
+# 이메일 (선택사항)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+EMAIL_USERNAME=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+```
+
+## 코딩 스타일 가이드
+
+### 1. PEP 8 준수
+```python
+# 좋은 예
+def get_account_balance(account_number: str) -> float:
+    """계좌 잔고를 조회합니다.
+    
+    Args:
+        account_number: 계좌번호
+        
+    Returns:
+        계좌 잔고
+        
+    Raises:
+        BrokerError: API 호출 실패 시
+    """
+    pass
+
+# 나쁜 예
+def getAccountBalance(accountNumber):
+    pass
+```
+
+### 2. 타입 힌트 사용
+```python
+from typing import List, Dict, Optional, Union
+from datetime import datetime, date
+
+def process_transactions(
+    transactions: List[Dict[str, Union[str, int, float]]],
+    start_date: date,
+    end_date: date
+) -> Optional[Dict[str, float]]:
+    pass
+```
+
+### 3. 예외 처리
+```python
+import logging
+from app.utils.exceptions import BrokerError, DatabaseError
+
+logger = logging.getLogger(__name__)
+
+def safe_api_call(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except BrokerError as e:
+            logger.error(f"브로커 API 오류: {e.message}")
+            raise
+        except Exception as e:
+            logger.error(f"예상치 못한 오류: {str(e)}")
+            raise BrokerError(f"API 호출 실패: {str(e)}")
+    return wrapper
+```
+
+## 데이터베이스 구현
+
+### 1. SQLAlchemy 설정
+```python
+# app/utils/database.py
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+import os
+
+Base = declarative_base()
+
+class DatabaseManager:
+    def __init__(self):
+        self.engine = None
+        self.SessionLocal = None
+    
+    def init_database(self, database_url: str):
+        self.engine = create_engine(database_url)
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        Base.metadata.create_all(bind=self.engine)
+    
+    def get_session(self):
+        return self.SessionLocal()
+```
+
+### 2. 모델 구현
+```python
+# app/models/account.py
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from app.utils.database import Base
+from datetime import datetime
+
+class Account(Base):
+    __tablename__ = 'accounts'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    broker_id = Column(Integer, ForeignKey('brokers.id'), nullable=False)
+    account_number = Column(String(50), nullable=False, index=True)
+    account_name = Column(String(100))
+    account_type = Column(String(20), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 관계
+    broker = relationship("Broker", back_populates="accounts")
+    daily_balances = relationship("DailyBalance", back_populates="account")
+```
+
+## API 구현
+
+### 1. FastAPI 애플리케이션
+```python
+# app/main.py
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from app.api import accounts, analysis, dashboard
+from app.utils.database import DatabaseManager
+
+app = FastAPI(title="Stock Analyzer API", version="1.0.0")
+
+# CORS 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 라우터 등록
+app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
+app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+
+@app.get("/")
+async def root():
+    return {"message": "Stock Analyzer API"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+```
+
+### 2. API 엔드포인트 구현
+```python
+# app/api/accounts.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.models.account import Account
+from app.utils.database import get_session
+from typing import List
+
+router = APIRouter()
+
+@router.get("/", response_model=List[dict])
+async def get_accounts(db: Session = Depends(get_session)):
+    """모든 계좌 정보를 조회합니다."""
+    try:
+        accounts = db.query(Account).filter(Account.is_active == True).all()
+        return [
+            {
+                "id": account.id,
+                "account_number": account.account_number,
+                "account_name": account.account_name,
+                "account_type": account.account_type,
+                "broker_name": account.broker.name
+            }
+            for account in accounts
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+## 스케줄러 구현
+
+### 1. APScheduler 설정
+```python
+# app/services/scheduler_service.py
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from app.services.data_collector import DataCollector
+import logging
+
+logger = logging.getLogger(__name__)
+
+class SchedulerService:
+    def __init__(self, config):
+        self.scheduler = BackgroundScheduler()
+        self.config = config
+        self.data_collector = DataCollector()
+    
+    def start(self):
+        if self.config.get('scheduler.enabled', False):
+            cron_expression = self.config.get('scheduler.cron_expression', '0 30 18 * * 1-5')
+            timezone = self.config.get('scheduler.timezone', 'Asia/Seoul')
+            
+            self.scheduler.add_job(
+                func=self.collect_data,
+                trigger=CronTrigger.from_crontab(cron_expression, timezone=timezone),
+                id='daily_data_collection',
+                name='일일 데이터 수집',
+                replace_existing=True
+            )
+            
+            self.scheduler.start()
+            logger.info("스케줄러가 시작되었습니다.")
+    
+    def collect_data(self):
+        """일일 데이터 수집 작업"""
+        try:
+            logger.info("데이터 수집을 시작합니다.")
+            self.data_collector.collect_all_accounts()
+            logger.info("데이터 수집이 완료되었습니다.")
+        except Exception as e:
+            logger.error(f"데이터 수집 중 오류 발생: {str(e)}")
+```
+
+## 로깅 구현
+
+### 1. 로깅 설정
+```python
+# app/utils/logger.py
+import logging
+import logging.handlers
+import os
+from datetime import datetime
+
+def setup_logging(config):
+    """로깅 설정"""
+    log_level = config.get('logging.level', 'INFO')
+    log_file = config.get('logging.file_path', './logs/stock_analyzer.log')
+    max_size = config.get('logging.max_size_mb', 10) * 1024 * 1024
+    backup_count = config.get('logging.backup_count', 5)
+    
+    # 로그 디렉토리 생성
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    
+    # 로거 설정
+    logger = logging.getLogger()
+    logger.setLevel(getattr(logging, log_level))
+    
+    # 파일 핸들러 (로테이션)
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=max_size, backupCount=backup_count
+    )
+    file_handler.setLevel(getattr(logging, log_level))
+    
+    # 콘솔 핸들러
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(getattr(logging, log_level))
+    
+    # 포맷터
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    logger.addHandler(file_handler)
+    if config.get('logging.console_output', True):
+        logger.addHandler(console_handler)
+```
+
+### 2. 민감정보 마스킹
+```python
+# app/utils/logger.py
+import re
+
+class SensitiveDataFilter(logging.Filter):
+    """민감정보 마스킹 필터"""
+    
+    def filter(self, record):
+        if hasattr(record, 'msg'):
+            record.msg = self.mask_sensitive_data(record.msg)
+        return True
+    
+    def mask_sensitive_data(self, message):
+        """민감정보 마스킹"""
+        if not isinstance(message, str):
+            return message
+        
+        # 패스워드, 토큰, 키 등 마스킹
+        patterns = [
+            (r'password["\']?\s*[:=]\s*["\']?([^"\']+)["\']?', r'password="***"'),
+            (r'token["\']?\s*[:=]\s*["\']?([^"\']+)["\']?', r'token="***"'),
+            (r'key["\']?\s*[:=]\s*["\']?([^"\']+)["\']?', r'key="***"'),
+        ]
+        
+        for pattern, replacement in patterns:
+            message = re.sub(pattern, replacement, message, flags=re.IGNORECASE)
+        
+        return message
+```
+
+## 테스트 구현
+
+### 1. 단위 테스트
+```python
+# tests/test_account_service.py
+import pytest
+from unittest.mock import Mock, patch
+from app.services.account_service import AccountService
+
+class TestAccountService:
+    def setup_method(self):
+        self.account_service = AccountService()
+    
+    def test_get_account_balance_success(self):
+        """계좌 잔고 조회 성공 테스트"""
+        with patch('app.services.account_service.BrokerAPI') as mock_broker:
+            mock_broker.return_value.get_balance.return_value = 1000000
+            
+            result = self.account_service.get_account_balance("12345678-01")
+            
+            assert result == 1000000
+            mock_broker.return_value.get_balance.assert_called_once_with("12345678-01")
+    
+    def test_get_account_balance_failure(self):
+        """계좌 잔고 조회 실패 테스트"""
+        with patch('app.services.account_service.BrokerAPI') as mock_broker:
+            mock_broker.return_value.get_balance.side_effect = Exception("API 오류")
+            
+            with pytest.raises(Exception):
+                self.account_service.get_account_balance("12345678-01")
+```
+
+### 2. 통합 테스트
+```python
+# tests/test_integration.py
+import pytest
+from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
+
+def test_get_accounts():
+    """계좌 목록 조회 통합 테스트"""
+    response = client.get("/api/accounts/")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+```
+
+## 배포 설정
+
+### 1. Docker 설정
+```dockerfile
+# Dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### 2. Docker Compose
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - DATABASE_TYPE=sqlite
+      - DATABASE_PATH=/app/data/stock_analyzer.db
+    depends_on:
+      - db
+
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: stock_analyzer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+```
+
+## 성능 최적화
+
+### 1. API 호출 최적화
+```python
+# 단일 API 호출로 모든 정보 획득
+def get_portfolio_info(account_number: str):
+    """보유종목 조회 API 하나로 모든 정보 획득"""
+    response = broker.get_holdings(account_number)
+    
+    # 단일 호출로 다음 정보들을 모두 획득:
+    # - 계좌 잔고 정보
+    # - 보유종목 리스트  
+    # - 각 종목의 현재가, 등락률, 손익 정보
+    # - 평가금액, 총자산 정보
+    
+    return {
+        'holdings': response,
+        'total_value': sum(h['evaluation_amount'] for h in response),
+        'total_profit': sum(h['profit_loss'] for h in response)
+    }
+
+# 환경변수 기반 설정으로 하드코딩 제거
+class KISBroker:
+    def __init__(self, config):
+        self.base_url = config.get('api_settings', {}).get('base_url')
+        self.api_balance = config.get('api_settings', {}).get('api_balance')
+        self.account_8_prod = config.get('api_settings', {}).get('account_8_prod')
+        self.account_pd_prod = config.get('api_settings', {}).get('account_pd_prod')
+```
+
+### 2. 토큰 관리 최적화
+```python
+# 증권사별 독립적인 토큰 관리
+class TokenManager:
+    def __init__(self, broker_name: str = None):
+        self.broker_name = broker_name
+        self.token_file_path = f"./token/{broker_name.lower()}/tokens.json"
+    
+    def save_token(self, access_token: str, refresh_token: str = None, expires_in: int = 86400):
+        """토큰 저장 및 만료 시간 관리"""
+        token_data = {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_at': datetime.now() + timedelta(seconds=expires_in)
+        }
+        # 증권사별 토큰 파일에 저장
+```
+
+### 3. 데이터베이스 최적화
+```python
+# 배치 처리
+def bulk_insert_balances(balances):
+    """대량 데이터 배치 삽입"""
+    db.bulk_insert_mappings(DailyBalance, balances)
+    db.commit()
+
+# 쿼리 최적화
+def get_accounts_with_balances():
+    """N+1 문제 해결"""
+    return db.query(Account)\
+        .options(joinedload(Account.daily_balances))\
+        .filter(Account.is_active == True)\
+        .all()
+```
+
+### 4. 메모리 최적화
+```python
+# 제너레이터 사용
+def process_large_dataset():
+    """대용량 데이터 처리"""
+    for chunk in pd.read_csv('large_file.csv', chunksize=1000):
+        yield process_chunk(chunk)
+```
+
+## 모니터링 및 알림
+
+### 1. 헬스체크
+```python
+# app/api/health.py
+from fastapi import APIRouter
+import psutil
+import os
+
+router = APIRouter()
+
+@router.get("/health")
+async def health_check():
+    """시스템 상태 확인"""
+    return {
+        "status": "healthy",
+        "cpu_usage": psutil.cpu_percent(),
+        "memory_usage": psutil.virtual_memory().percent,
+        "disk_usage": psutil.disk_usage('/').percent
+    }
+```
+
+### 2. 알림 시스템
+```python
+# app/services/notification_service.py
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+class NotificationService:
+    def __init__(self, config):
+        self.config = config
+        self.smtp_server = config.get('notifications.email.smtp_server')
+        self.smtp_port = config.get('notifications.email.smtp_port')
+        self.username = config.get('notifications.email.username')
+        self.password = config.get('notifications.email.password')
+    
+    def send_email(self, subject, body, to_addresses):
+        """이메일 발송"""
+        msg = MIMEMultipart()
+        msg['From'] = self.username
+        msg['To'] = ', '.join(to_addresses)
+        msg['Subject'] = subject
+        
+        msg.attach(MIMEText(body, 'html'))
+        
+        with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+            server.starttls()
+            server.login(self.username, self.password)
+            server.send_message(msg)
+```
+
+## 트러블슈팅
+
+### 1. 자주 발생하는 문제
+- **키움증권 API 연결 실패**: 영웅문 프로그램 실행 상태 확인
+- **한국투자증권 토큰 만료**: 자동 갱신 로직 구현
+- **데이터베이스 락**: 트랜잭션 타임아웃 설정
+- **메모리 부족**: 배치 처리 및 가비지 컬렉션
+
+### 2. 로그 분석
+```python
+# 로그 분석 스크립트
+def analyze_logs(log_file):
+    """로그 파일 분석"""
+    error_count = 0
+    warning_count = 0
+    
+    with open(log_file, 'r') as f:
+        for line in f:
+            if 'ERROR' in line:
+                error_count += 1
+            elif 'WARNING' in line:
+                warning_count += 1
+    
+    return {
+        'error_count': error_count,
+        'warning_count': warning_count
+    }
+```

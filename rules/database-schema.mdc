@@ -1,0 +1,295 @@
+---
+description: 데이터베이스 스키마 참고 자료 - 테이블 구조, ERD 관계도, SQLAlchemy 모델, 성능 최적화
+globs: ["**/models/*.py", "**/database*.py", "**/migrations/*.py"]
+alwaysApply: false
+---
+
+# 데이터베이스 스키마 참고 자료
+
+## 전체 ERD 관계도
+
+```
+brokers (증권사)
+    ↓ 1:N
+accounts (계좌)
+    ↓ 1:N
+daily_balances (일일잔고)
+    ↓ 1:N
+holdings (보유종목)
+    ↓ 1:N
+transactions (거래내역)
+```
+
+## 테이블 상세 스키마
+
+### 1. brokers (증권사 정보)
+```sql
+CREATE TABLE brokers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(50) NOT NULL,           -- 키움증권, 한국투자증권
+    api_type VARCHAR(20) NOT NULL,       -- kiwoom, kis
+    platform VARCHAR(20) NOT NULL,      -- windows, cross
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**인덱스**:
+- `idx_brokers_name` ON brokers(name)
+- `idx_brokers_api_type` ON brokers(api_type)
+
+### 2. accounts (계좌 정보)
+```sql
+CREATE TABLE accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    broker_id INTEGER NOT NULL,
+    account_number VARCHAR(50) NOT NULL,
+    account_name VARCHAR(100),
+    account_type VARCHAR(20) NOT NULL,   -- cash, credit, fund
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (broker_id) REFERENCES brokers(id),
+    UNIQUE(broker_id, account_number)
+);
+```
+
+**인덱스**:
+- `idx_accounts_broker_id` ON accounts(broker_id)
+- `idx_accounts_account_number` ON accounts(account_number)
+- `idx_accounts_active` ON accounts(is_active)
+
+### 3. daily_balances (일일 잔고)
+```sql
+CREATE TABLE daily_balances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    total_balance DECIMAL(15,2),         -- 총자산
+    cash_balance DECIMAL(15,2),          -- 현금잔고
+    stock_value DECIMAL(15,2),           -- 주식평가금액
+    profit_loss DECIMAL(15,2),          -- 손익
+    profit_loss_rate DECIMAL(5,2),       -- 손익률
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id),
+    UNIQUE(account_id, date)
+);
+```
+
+**인덱스**:
+- `idx_daily_balances_account_date` ON daily_balances(account_id, date)
+- `idx_daily_balances_date` ON daily_balances(date)
+
+### 4. holdings (보유 종목)
+```sql
+CREATE TABLE holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    stock_code VARCHAR(10) NOT NULL,     -- 종목코드
+    stock_name VARCHAR(100) NOT NULL,    -- 종목명
+    quantity INTEGER NOT NULL,           -- 보유수량
+    average_price DECIMAL(10,2),        -- 평균단가
+    current_price DECIMAL(10,2),        -- 현재가
+    market_value DECIMAL(15,2),         -- 평가금액
+    profit_loss DECIMAL(15,2),          -- 손익
+    profit_loss_rate DECIMAL(5,2),      -- 손익률
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
+);
+```
+
+**인덱스**:
+- `idx_holdings_account_date` ON holdings(account_id, date)
+- `idx_holdings_stock_code` ON holdings(stock_code)
+- `idx_holdings_date` ON holdings(date)
+
+### 5. transactions (거래 내역)
+```sql
+CREATE TABLE transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    stock_code VARCHAR(10) NOT NULL,
+    stock_name VARCHAR(100) NOT NULL,
+    transaction_type VARCHAR(10) NOT NULL, -- BUY, SELL
+    quantity INTEGER NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    amount DECIMAL(15,2) NOT NULL,       -- 거래금액
+    fee DECIMAL(10,2) DEFAULT 0,         -- 수수료
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
+);
+```
+
+**인덱스**:
+- `idx_transactions_account_date` ON transactions(account_id, date)
+- `idx_transactions_stock_code` ON transactions(stock_code)
+- `idx_transactions_date` ON transactions(date)
+
+## SQLAlchemy 모델 예시
+
+### 1. Base 모델
+```python
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, DECIMAL, Date, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
+Base = declarative_base()
+
+class TimestampMixin:
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+```
+
+### 2. Broker 모델
+```python
+class Broker(Base, TimestampMixin):
+    __tablename__ = 'brokers'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False)
+    api_type = Column(String(20), nullable=False)
+    platform = Column(String(20), nullable=False)
+    is_active = Column(Boolean, default=True)
+    
+    # 관계
+    accounts = relationship("Account", back_populates="broker")
+```
+
+### 3. Account 모델
+```python
+class Account(Base, TimestampMixin):
+    __tablename__ = 'accounts'
+    
+    id = Column(Integer, primary_key=True)
+    broker_id = Column(Integer, ForeignKey('brokers.id'), nullable=False)
+    account_number = Column(String(50), nullable=False)
+    account_name = Column(String(100))
+    account_type = Column(String(20), nullable=False)
+    is_active = Column(Boolean, default=True)
+    
+    # 관계
+    broker = relationship("Broker", back_populates="accounts")
+    daily_balances = relationship("DailyBalance", back_populates="account")
+    holdings = relationship("Holding", back_populates="account")
+    transactions = relationship("Transaction", back_populates="account")
+```
+
+## 데이터 마이그레이션 전략
+
+### 1. 초기 데이터 생성
+```python
+def create_initial_data():
+    # 증권사 정보 생성
+    brokers = [
+        Broker(name="키움증권", api_type="kiwoom", platform="windows"),
+        Broker(name="한국투자증권", api_type="kis", platform="cross")
+    ]
+    
+    for broker in brokers:
+        db.add(broker)
+    db.commit()
+```
+
+### 2. 스키마 변경 시 마이그레이션
+```python
+# Alembic을 사용한 마이그레이션
+# 1. 마이그레이션 파일 생성
+alembic revision --autogenerate -m "Add new column"
+
+# 2. 마이그레이션 실행
+alembic upgrade head
+```
+
+## 성능 최적화
+
+### 1. 인덱스 전략
+```sql
+-- 복합 인덱스 (자주 함께 조회되는 컬럼)
+CREATE INDEX idx_daily_balances_account_date 
+ON daily_balances(account_id, date);
+
+-- 부분 인덱스 (특정 조건의 데이터만 인덱싱)
+CREATE INDEX idx_active_accounts 
+ON accounts(account_number) 
+WHERE is_active = TRUE;
+```
+
+### 2. 파티셔닝 (대용량 데이터)
+```sql
+-- 날짜별 파티셔닝 (PostgreSQL)
+CREATE TABLE daily_balances_2024 PARTITION OF daily_balances
+FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+```
+
+### 3. 쿼리 최적화
+```python
+# N+1 문제 해결
+def get_accounts_with_balances():
+    return db.query(Account)\
+        .options(joinedload(Account.daily_balances))\
+        .filter(Account.is_active == True)\
+        .all()
+
+# 배치 처리
+def bulk_insert_balances(balances):
+    db.bulk_insert_mappings(DailyBalance, balances)
+    db.commit()
+```
+
+## 백업 및 복구
+
+### 1. 자동 백업 스크립트
+```python
+import shutil
+from datetime import datetime
+
+def backup_database():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"./backups/stock_analyzer_{timestamp}.db"
+    shutil.copy2("./data/stock_analyzer.db", backup_path)
+    return backup_path
+```
+
+### 2. 데이터 검증
+```python
+def validate_data_integrity():
+    # 외래키 제약조건 검증
+    orphaned_accounts = db.query(Account)\
+        .filter(~Account.broker_id.in_(db.query(Broker.id)))\
+        .count()
+    
+    if orphaned_accounts > 0:
+        raise ValueError(f"고아 계좌 {orphaned_accounts}개 발견")
+```
+
+## 모니터링 및 로깅
+
+### 1. 데이터베이스 로깅
+```python
+import logging
+
+# SQL 쿼리 로깈
+logging.basicConfig()
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+```
+
+### 2. 성능 모니터링
+```python
+import time
+
+def monitor_query_performance(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        execution_time = time.time() - start_time
+        
+        if execution_time > 1.0:  # 1초 이상
+            logger.warning(f"느린 쿼리 감지: {func.__name__}, {execution_time:.2f}초")
+        
+        return result
+    return wrapper
+```
