@@ -259,6 +259,7 @@ class KISBroker(BaseBroker):
             response = self._make_request('GET', url, headers=headers, params=params)
             data = response.json()
             
+            
             # 잔고 정보 파싱 (사용자 제공 API 명세에 맞게)
             balance_info = {
                 'account_number': account_number,
@@ -275,24 +276,35 @@ class KISBroker(BaseBroker):
                 output2 = data['output2']
                 if isinstance(output2, dict):
                     balance_info['cash_balance'] = float(output2.get('dnca_tot_amt', 0))  # 총예수금
-                    balance_info['total_balance'] = float(output2.get('tot_asst_amt', 0))  # 총자산
-                    balance_info['evaluation_amount'] = float(output2.get('evlu_amt', 0))  # 평가금액
-                    balance_info['profit_loss'] = float(output2.get('evlu_pfls_amt', 0))  # 평가손익
-                    balance_info['profit_loss_rate'] = float(output2.get('evlu_pfls_rt', 0))  # 평가손익률
+                    balance_info['total_balance'] = float(output2.get('tot_evlu_amt', 0))  # 총평가금액
+                    balance_info['evaluation_amount'] = float(output2.get('scts_evlu_amt', 0))  # 주식평가금액
+                    balance_info['profit_loss'] = float(output2.get('evlu_pfls_smtl_amt', 0))  # 평가손익
                     
-                    # 주식 잔고 = 총자산 - 현금잔고
+                    # 주식 잔고 = 총평가금액 - 현금잔고
                     balance_info['stock_balance'] = balance_info['total_balance'] - balance_info['cash_balance']
+                    
+                    # 손익률 계산 (평가손익 / (총평가금액 - 평가손익) * 100)
+                    if balance_info['total_balance'] - balance_info['profit_loss'] > 0:
+                        balance_info['profit_loss_rate'] = (balance_info['profit_loss'] / (balance_info['total_balance'] - balance_info['profit_loss'])) * 100
+                    else:
+                        balance_info['profit_loss_rate'] = 0.0
+                        
                 elif isinstance(output2, list) and len(output2) > 0:
                     # 리스트 형태인 경우 첫 번째 항목 사용
                     output2_item = output2[0]
                     balance_info['cash_balance'] = float(output2_item.get('dnca_tot_amt', 0))  # 총예수금
-                    balance_info['total_balance'] = float(output2_item.get('tot_asst_amt', 0))  # 총자산
-                    balance_info['evaluation_amount'] = float(output2_item.get('evlu_amt', 0))  # 평가금액
-                    balance_info['profit_loss'] = float(output2_item.get('evlu_pfls_amt', 0))  # 평가손익
-                    balance_info['profit_loss_rate'] = float(output2_item.get('evlu_pfls_rt', 0))  # 평가손익률
+                    balance_info['total_balance'] = float(output2_item.get('tot_evlu_amt', 0))  # 총평가금액
+                    balance_info['evaluation_amount'] = float(output2_item.get('scts_evlu_amt', 0))  # 주식평가금액
+                    balance_info['profit_loss'] = float(output2_item.get('evlu_pfls_smtl_amt', 0))  # 평가손익
                     
-                    # 주식 잔고 = 총자산 - 현금잔고
+                    # 주식 잔고 = 총평가금액 - 현금잔고
                     balance_info['stock_balance'] = balance_info['total_balance'] - balance_info['cash_balance']
+                    
+                    # 손익률 계산 (평가손익 / (총평가금액 - 평가손익) * 100)
+                    if balance_info['total_balance'] - balance_info['profit_loss'] > 0:
+                        balance_info['profit_loss_rate'] = (balance_info['profit_loss'] / (balance_info['total_balance'] - balance_info['profit_loss'])) * 100
+                    else:
+                        balance_info['profit_loss_rate'] = 0.0
             
             logger.info(f"계좌 {account_number} 잔고 조회 완료")
             return balance_info

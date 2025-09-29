@@ -167,3 +167,9 @@ Thumbs.db
 *.temp
 temp/
 tmp/
+
+#data 폴더 (계좌 정보)
+data/
+
+#Claude Code Local Config Files
+.claude/

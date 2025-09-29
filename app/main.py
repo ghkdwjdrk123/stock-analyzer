@@ -21,6 +21,10 @@ from app.models.account import Account
 from app.models.balance import DailyBalance
 from app.models.holding import Holding
 from app.models.transaction import Transaction
+from app.models.aggregation import (
+    MonthlySummary, StockPerformance, PortfolioAnalysis,
+    TradingPattern, RiskMetrics
+)
 
 def main():
     """메인 함수"""

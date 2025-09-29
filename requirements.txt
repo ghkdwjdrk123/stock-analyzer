@@ -2,6 +2,8 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 streamlit==1.28.1
+streamlit-components==0.1.0
+streamlit-option-menu==0.4.0
 
 # 데이터베이스
 sqlalchemy==2.0.23
@@ -10,11 +12,11 @@ alembic==1.12.1
 # 스케줄링
 apscheduler==3.10.4
 
-# 데이터 처리
+# 데이터 처리 및 분석
 pandas==2.1.3
-numpy==1.25.2
+numpy==1.26.4
 
-# 시각화
+# 시각화 (차트/그래프)
 plotly==5.17.0
 matplotlib==3.8.2
 
@@ -26,6 +28,11 @@ websocket-client==1.6.4
 python-dotenv==1.0.0
 cryptography==41.0.7
 jsonschema==4.19.2
+
+# Additional data processing libraries
+scipy==1.11.4          # Statistical analysis and mathematical operations
+scikit-learn==1.3.2    # Machine learning (for future portfolio optimization)
+yfinance==0.2.28       # Yahoo Finance API (for supplementary stock data)
 
 # 테스트
 pytest==7.4.3

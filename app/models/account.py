@@ -24,3 +24,8 @@ class Account(Base):
     daily_balances = relationship("DailyBalance", back_populates="account")
     holdings = relationship("Holding", back_populates="account")
     transactions = relationship("Transaction", back_populates="account")
+    monthly_summaries = relationship("MonthlySummary", back_populates="account")
+    stock_performances = relationship("StockPerformance", back_populates="account")
+    portfolio_analyses = relationship("PortfolioAnalysis", back_populates="account")
+    trading_patterns = relationship("TradingPattern", back_populates="account")
+    risk_metrics = relationship("RiskMetrics", back_populates="account")

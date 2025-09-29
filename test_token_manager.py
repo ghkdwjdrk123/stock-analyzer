@@ -103,7 +103,7 @@ def test_token_manager():
 if __name__ == "__main__":
     success = test_token_manager()
     if success:
-        print("\n✅ 토큰 관리 테스트가 성공적으로 완료되었습니다!")
+        print("\nSuccess: 토큰 관리 테스트가 성공적으로 완료되었습니다!")
     else:
-        print("\n❌ 토큰 관리 테스트에 실패했습니다.")
+        print("\nError: 토큰 관리 테스트에 실패했습니다.")
         sys.exit(1)

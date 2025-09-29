@@ -1,0 +1,660 @@
+---
+description: GUI 구현 참고 자료 - 테이블 조회, 차트 조회, 사용자 인터페이스 설계, 프레임워크 선택
+globs: ["**/gui/*.py", "**/ui/*.py", "**/views/*.py", "**/templates/*.html", "**/static/*.css", "**/static/*.js"]
+alwaysApply: false
+---
+
+# GUI 구현 참고 자료
+
+## GUI 프레임워크 선택 가이드
+
+### 1. 추천 프레임워크
+
+#### **Streamlit (추천)**
+```python
+# 장점: 빠른 프로토타이핑, 데이터 분석에 최적화
+# 단점: 커스터마이징 제한, 복잡한 UI 구현 어려움
+import streamlit as st
+import plotly.graph_objects as go
+
+# 기본 구조
+def main():
+    st.title("Stock Analyzer")
+    st.sidebar.title("메뉴")
+    
+    # 데이터 조회
+    data = get_portfolio_data()
+    
+    # 차트 표시
+    fig = create_portfolio_chart(data)
+    st.plotly_chart(fig)
+```
+
+#### **Tkinter (내장)**
+```python
+# 장점: Python 내장, 가벼움, 커스터마이징 자유
+# 단점: 현대적이지 않은 UI, 복잡한 레이아웃 어려움
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+class StockAnalyzerGUI:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.setup_ui()
+    
+    def setup_ui(self):
+        # 메인 프레임
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 메뉴바
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # 데이터 메뉴
+        data_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="데이터", menu=data_menu)
+        data_menu.add_command(label="계좌 조회", command=self.show_accounts)
+        data_menu.add_command(label="잔고 조회", command=self.show_balances)
+```
+
+#### **PyQt5/PySide2**
+```python
+# 장점: 전문적인 UI, 높은 커스터마이징, 크로스 플랫폼
+# 단점: 학습 곡선, 라이선스 이슈
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
+from PyQt5.QtWebEngineWidgets import QWebEngineView
+import plotly.graph_objects as go
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+    
+    def init_ui(self):
+        # 중앙 위젯
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # 레이아웃
+        layout = QVBoxLayout()
+        central_widget.setLayout(layout)
+        
+        # 웹뷰 (Plotly 차트용)
+        self.web_view = QWebEngineView()
+        layout.addWidget(self.web_view)
+```
+
+### 2. 웹 기반 솔루션
+
+#### **Flask + HTML/CSS/JS**
+```python
+# app.py
+from flask import Flask, render_template, jsonify
+import plotly.graph_objects as go
+import plotly.utils
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/portfolio-data')
+def get_portfolio_data():
+    # 데이터 조회 로직
+    data = get_portfolio_analysis()
+    return jsonify(data)
+
+@app.route('/api/chart/<chart_type>')
+def get_chart(chart_type):
+    if chart_type == 'performance':
+        fig = create_performance_chart()
+    elif chart_type == 'holdings':
+        fig = create_holdings_chart()
+    
+    return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+```
+
+## 데이터 조회 기능 설계
+
+### 1. 테이블 조회 API
+
+#### **계좌 정보 조회**
+```python
+class AccountService:
+    def get_accounts(self, broker_id: int = None) -> List[Dict]:
+        """계좌 목록 조회"""
+        session = db_manager.get_session()
+        try:
+            query = session.query(Account)
+            if broker_id:
+                query = query.filter(Account.broker_id == broker_id)
+            
+            accounts = query.filter(Account.is_active == True).all()
+            
+            return [{
+                'id': acc.id,
+                'broker_name': acc.broker.name,
+                'account_number': acc.account_number,
+                'account_name': acc.account_name,
+                'account_type': acc.account_type,
+                'created_at': acc.created_at.isoformat()
+            } for acc in accounts]
+        finally:
+            session.close()
+```
+
+#### **잔고 정보 조회**
+```python
+def get_balance_history(self, account_id: int, start_date: date = None, end_date: date = None) -> List[Dict]:
+    """잔고 이력 조회"""
+    session = db_manager.get_session()
+    try:
+        query = session.query(DailyBalance).filter(DailyBalance.account_id == account_id)
+        
+        if start_date:
+            query = query.filter(DailyBalance.balance_date >= start_date)
+        if end_date:
+            query = query.filter(DailyBalance.balance_date <= end_date)
+        
+        balances = query.order_by(DailyBalance.balance_date.desc()).all()
+        
+        return [{
+            'date': balance.balance_date.isoformat(),
+            'total_balance': float(balance.total_balance),
+            'cash_balance': float(balance.cash_balance),
+            'stock_balance': float(balance.stock_balance),
+            'profit_loss': float(balance.profit_loss),
+            'profit_loss_rate': float(balance.profit_loss_rate)
+        } for balance in balances]
+    finally:
+        session.close()
+```
+
+#### **보유종목 조회**
+```python
+def get_holdings(self, account_id: int, date: date = None) -> List[Dict]:
+    """보유종목 조회"""
+    if not date:
+        date = date.today()
+    
+    session = db_manager.get_session()
+    try:
+        holdings = session.query(Holding).filter(
+            and_(
+                Holding.account_id == account_id,
+                Holding.last_updated >= date
+            )
+        ).all()
+        
+        return [{
+            'symbol': holding.symbol,
+            'name': holding.name,
+            'quantity': holding.quantity,
+            'average_price': float(holding.average_price),
+            'current_price': float(holding.current_price),
+            'evaluation_amount': float(holding.evaluation_amount),
+            'profit_loss': float(holding.profit_loss),
+            'profit_loss_rate': float(holding.profit_loss_rate)
+        } for holding in holdings]
+    finally:
+        session.close()
+```
+
+### 2. 거래 내역 조회
+```python
+def get_transactions(self, account_id: int, start_date: date = None, end_date: date = None, 
+                    symbol: str = None) -> List[Dict]:
+    """거래 내역 조회"""
+    session = db_manager.get_session()
+    try:
+        query = session.query(Transaction).filter(Transaction.account_id == account_id)
+        
+        if start_date:
+            query = query.filter(Transaction.transaction_date >= start_date)
+        if end_date:
+            query = query.filter(Transaction.transaction_date <= end_date)
+        if symbol:
+            query = query.filter(Transaction.symbol == symbol)
+        
+        transactions = query.order_by(Transaction.transaction_date.desc()).all()
+        
+        return [{
+            'date': transaction.transaction_date.isoformat(),
+            'symbol': transaction.symbol,
+            'name': transaction.name,
+            'type': transaction.transaction_type,
+            'quantity': transaction.quantity,
+            'price': float(transaction.price),
+            'amount': float(transaction.amount),
+            'fee': float(transaction.fee)
+        } for transaction in transactions]
+    finally:
+        session.close()
+```
+
+## 차트 조회 기능 설계
+
+### 1. 기존 ChartGenerator 활용
+
+#### **포트폴리오 성과 차트**
+```python
+def create_portfolio_performance_chart(account_id: int, days: int = 30) -> str:
+    """포트폴리오 성과 차트 생성"""
+    try:
+        # 데이터 조회
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+        
+        balances = get_balance_history(account_id, start_date, end_date)
+        
+        if not balances:
+            return None
+        
+        # 차트 생성
+        chart_generator = ChartGenerator()
+        fig = chart_generator.create_portfolio_performance_chart(balances)
+        
+        # HTML 파일로 저장
+        filename = f"portfolio_performance_{account_id}_{date.today().strftime('%Y%m%d')}.html"
+        filepath = chart_generator.export_chart_to_html(fig, filename)
+        
+        return filepath
+    except Exception as e:
+        logger.error(f"포트폴리오 성과 차트 생성 실패: {str(e)}")
+        return None
+```
+
+#### **보유종목 비중 차트**
+```python
+def create_holdings_pie_chart(account_id: int) -> str:
+    """보유종목 비중 파이 차트 생성"""
+    try:
+        # 보유종목 데이터 조회
+        holdings = get_holdings(account_id)
+        
+        if not holdings:
+            return None
+        
+        # 차트 생성
+        chart_generator = ChartGenerator()
+        fig = chart_generator.create_holdings_pie_chart(holdings)
+        
+        # HTML 파일로 저장
+        filename = f"holdings_pie_{account_id}_{date.today().strftime('%Y%m%d')}.html"
+        filepath = chart_generator.export_chart_to_html(fig, filename)
+        
+        return filepath
+    except Exception as e:
+        logger.error(f"보유종목 비중 차트 생성 실패: {str(e)}")
+        return None
+```
+
+### 2. 새로운 차트 타입 추가
+
+#### **월별 수익률 차트**
+```python
+def create_monthly_return_chart(account_id: int, year: int) -> str:
+    """월별 수익률 차트 생성"""
+    try:
+        # 월별 데이터 조회
+        monthly_data = []
+        for month in range(1, 13):
+            summary = get_monthly_summary(account_id, year, month)
+            if summary:
+                monthly_data.append({
+                    'month': f"{year}-{month:02d}",
+                    'total_balance': float(summary.total_balance),
+                    'profit_loss_rate': float(summary.profit_loss_rate)
+                })
+        
+        if not monthly_data:
+            return None
+        
+        # 차트 생성
+        chart_generator = ChartGenerator()
+        fig = chart_generator.create_monthly_summary_chart(monthly_data)
+        
+        # HTML 파일로 저장
+        filename = f"monthly_return_{account_id}_{year}.html"
+        filepath = chart_generator.export_chart_to_html(fig, filename)
+        
+        return filepath
+    except Exception as e:
+        logger.error(f"월별 수익률 차트 생성 실패: {str(e)}")
+        return None
+```
+
+## GUI 컴포넌트 설계
+
+### 1. 메인 화면 구성
+
+#### **Streamlit 메인 화면**
+```python
+def create_main_interface():
+    """메인 인터페이스 생성"""
+    st.set_page_config(
+        page_title="Stock Analyzer",
+        page_icon="📈",
+        layout="wide"
+    )
+    
+    # 사이드바
+    with st.sidebar:
+        st.title("📊 Stock Analyzer")
+        
+        # 계좌 선택
+        accounts = get_accounts()
+        account_options = {f"{acc['broker_name']} - {acc['account_number']}": acc['id'] 
+                          for acc in accounts}
+        selected_account = st.selectbox("계좌 선택", list(account_options.keys()))
+        account_id = account_options[selected_account]
+        
+        # 메뉴
+        menu = st.radio("메뉴", [
+            "대시보드", "잔고 조회", "보유종목", "거래내역", 
+            "성과 분석", "차트 보기", "설정"
+        ])
+    
+    # 메인 컨텐츠
+    if menu == "대시보드":
+        show_dashboard(account_id)
+    elif menu == "잔고 조회":
+        show_balance_view(account_id)
+    elif menu == "보유종목":
+        show_holdings_view(account_id)
+    elif menu == "거래내역":
+        show_transactions_view(account_id)
+    elif menu == "성과 분석":
+        show_performance_analysis(account_id)
+    elif menu == "차트 보기":
+        show_charts_view(account_id)
+    elif menu == "설정":
+        show_settings()
+```
+
+### 2. 데이터 테이블 컴포넌트
+
+#### **잔고 테이블**
+```python
+def show_balance_table(account_id: int, days: int = 30):
+    """잔고 테이블 표시"""
+    st.subheader("📊 잔고 이력")
+    
+    # 데이터 조회
+    balances = get_balance_history(account_id, days=days)
+    
+    if not balances:
+        st.warning("잔고 데이터가 없습니다.")
+        return
+    
+    # DataFrame 생성
+    df = pd.DataFrame(balances)
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values('date', ascending=False)
+    
+    # 컬럼 포맷팅
+    df['total_balance'] = df['total_balance'].apply(lambda x: f"{x:,.0f}원")
+    df['cash_balance'] = df['cash_balance'].apply(lambda x: f"{x:,.0f}원")
+    df['stock_balance'] = df['stock_balance'].apply(lambda x: f"{x:,.0f}원")
+    df['profit_loss'] = df['profit_loss'].apply(lambda x: f"{x:,.0f}원")
+    df['profit_loss_rate'] = df['profit_loss_rate'].apply(lambda x: f"{x:.2f}%")
+    
+    # 테이블 표시
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "date": "날짜",
+            "total_balance": "총자산",
+            "cash_balance": "현금잔고",
+            "stock_balance": "주식잔고",
+            "profit_loss": "손익",
+            "profit_loss_rate": "수익률"
+        }
+    )
+```
+
+#### **보유종목 테이블**
+```python
+def show_holdings_table(account_id: int):
+    """보유종목 테이블 표시"""
+    st.subheader("📈 보유종목")
+    
+    # 데이터 조회
+    holdings = get_holdings(account_id)
+    
+    if not holdings:
+        st.warning("보유종목이 없습니다.")
+        return
+    
+    # DataFrame 생성
+    df = pd.DataFrame(holdings)
+    df = df.sort_values('evaluation_amount', ascending=False)
+    
+    # 컬럼 포맷팅
+    df['average_price'] = df['average_price'].apply(lambda x: f"{x:,.0f}원")
+    df['current_price'] = df['current_price'].apply(lambda x: f"{x:,.0f}원")
+    df['evaluation_amount'] = df['evaluation_amount'].apply(lambda x: f"{x:,.0f}원")
+    df['profit_loss'] = df['profit_loss'].apply(lambda x: f"{x:,.0f}원")
+    df['profit_loss_rate'] = df['profit_loss_rate'].apply(lambda x: f"{x:.2f}%")
+    
+    # 수익률별 색상 설정
+    def color_profit_loss(val):
+        if val.endswith('%'):
+            rate = float(val[:-1])
+            if rate > 0:
+                return 'background-color: lightgreen'
+            elif rate < 0:
+                return 'background-color: lightcoral'
+        return ''
+    
+    # 테이블 표시
+    styled_df = df.style.applymap(color_profit_loss, subset=['profit_loss_rate'])
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "symbol": "종목코드",
+            "name": "종목명",
+            "quantity": "수량",
+            "average_price": "평균단가",
+            "current_price": "현재가",
+            "evaluation_amount": "평가금액",
+            "profit_loss": "손익",
+            "profit_loss_rate": "수익률"
+        }
+    )
+```
+
+### 3. 차트 뷰어 컴포넌트
+
+#### **차트 선택 및 표시**
+```python
+def show_charts_view(account_id: int):
+    """차트 보기 화면"""
+    st.subheader("📊 차트 분석")
+    
+    # 차트 타입 선택
+    chart_type = st.selectbox(
+        "차트 타입 선택",
+        [
+            "포트폴리오 성과",
+            "보유종목 비중",
+            "보유종목 수익률",
+            "월별 수익률",
+            "거래 패턴"
+        ]
+    )
+    
+    # 기간 선택
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("시작일", value=date.today() - timedelta(days=30))
+    with col2:
+        end_date = st.date_input("종료일", value=date.today())
+    
+    # 차트 생성 버튼
+    if st.button("차트 생성"):
+        with st.spinner("차트를 생성하는 중..."):
+            if chart_type == "포트폴리오 성과":
+                chart_path = create_portfolio_performance_chart(account_id, start_date, end_date)
+            elif chart_type == "보유종목 비중":
+                chart_path = create_holdings_pie_chart(account_id)
+            elif chart_type == "보유종목 수익률":
+                chart_path = create_holdings_performance_chart(account_id)
+            elif chart_type == "월별 수익률":
+                year = st.selectbox("연도", range(2020, date.today().year + 1))
+                chart_path = create_monthly_return_chart(account_id, year)
+            
+            if chart_path:
+                # HTML 파일을 iframe으로 표시
+                with open(chart_path, 'r', encoding='utf-8') as f:
+                    chart_html = f.read()
+                st.components.v1.html(chart_html, height=600)
+            else:
+                st.error("차트 생성에 실패했습니다.")
+```
+
+## 성능 최적화
+
+### 1. 데이터 캐싱
+```python
+from functools import lru_cache
+import time
+
+@lru_cache(maxsize=128)
+def get_cached_balance_data(account_id: int, date_str: str):
+    """잔고 데이터 캐싱"""
+    target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    return get_balance_history(account_id, target_date, target_date)
+
+def get_balance_with_cache(account_id: int, target_date: date):
+    """캐시를 활용한 잔고 데이터 조회"""
+    date_str = target_date.strftime('%Y-%m-%d')
+    return get_cached_balance_data(account_id, date_str)
+```
+
+### 2. 비동기 데이터 로딩
+```python
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+async def load_dashboard_data(account_id: int):
+    """대시보드 데이터 비동기 로딩"""
+    with ThreadPoolExecutor() as executor:
+        # 병렬로 데이터 로딩
+        balance_task = executor.submit(get_balance_history, account_id)
+        holdings_task = executor.submit(get_holdings, account_id)
+        transactions_task = executor.submit(get_recent_transactions, account_id)
+        
+        # 결과 대기
+        balance_data = await asyncio.get_event_loop().run_in_executor(None, balance_task.result)
+        holdings_data = await asyncio.get_event_loop().run_in_executor(None, holdings_task.result)
+        transactions_data = await asyncio.get_event_loop().run_in_executor(None, transactions_task.result)
+        
+        return {
+            'balance': balance_data,
+            'holdings': holdings_data,
+            'transactions': transactions_data
+        }
+```
+
+### 3. 데이터 페이지네이션
+```python
+def get_paginated_data(query, page: int = 1, per_page: int = 50):
+    """페이지네이션된 데이터 조회"""
+    offset = (page - 1) * per_page
+    total_count = query.count()
+    
+    items = query.offset(offset).limit(per_page).all()
+    
+    return {
+        'items': items,
+        'total_count': total_count,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': (total_count + per_page - 1) // per_page
+    }
+```
+
+## 에러 처리 및 사용자 경험
+
+### 1. 에러 핸들링
+```python
+def safe_data_operation(operation_func, *args, **kwargs):
+    """안전한 데이터 작업 실행"""
+    try:
+        return operation_func(*args, **kwargs)
+    except DatabaseError as e:
+        logger.error(f"데이터베이스 오류: {str(e)}")
+        st.error("데이터베이스 연결에 문제가 발생했습니다.")
+        return None
+    except Exception as e:
+        logger.error(f"예상치 못한 오류: {str(e)}")
+        st.error("데이터를 불러오는 중 오류가 발생했습니다.")
+        return None
+```
+
+### 2. 로딩 상태 표시
+```python
+def show_loading_spinner(message: str = "데이터를 불러오는 중..."):
+    """로딩 스피너 표시"""
+    with st.spinner(message):
+        time.sleep(0.1)  # 최소 로딩 시간
+        return True
+
+# 사용 예시
+if st.button("데이터 새로고침"):
+    with st.spinner("데이터를 새로고침하는 중..."):
+        data = get_latest_data(account_id)
+        st.success("데이터가 업데이트되었습니다!")
+```
+
+### 3. 사용자 피드백
+```python
+def show_user_feedback(message: str, message_type: str = "info"):
+    """사용자 피드백 표시"""
+    if message_type == "success":
+        st.success(message)
+    elif message_type == "error":
+        st.error(message)
+    elif message_type == "warning":
+        st.warning(message)
+    else:
+        st.info(message)
+```
+
+## 배포 및 실행
+
+### 1. Streamlit 앱 실행
+```bash
+# 개발 환경
+streamlit run gui/main.py --server.port 8501
+
+# 프로덕션 환경
+streamlit run gui/main.py --server.port 8501 --server.headless true
+```
+
+### 2. Flask 앱 실행
+```bash
+# 개발 환경
+python gui/app.py
+
+# 프로덕션 환경 (Gunicorn)
+gunicorn -w 4 -b 0.0.0.0:5000 gui.app:app
+```
+
+### 3. 데스크톱 앱 패키징
+```bash
+# PyInstaller로 실행 파일 생성
+pyinstaller --onefile --windowed gui/main.py
+
+# cx_Freeze로 실행 파일 생성
+python setup.py build
+```
+
+이 참고 자료를 통해 GUI 구현 시 필요한 모든 정보를 확인할 수 있습니다. 프로젝트의 기존 구조와 기능을 최대한 활용하면서 사용자 친화적인 인터페이스를 구축할 수 있습니다.

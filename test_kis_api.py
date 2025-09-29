@@ -133,7 +133,7 @@ def test_kis_api():
 if __name__ == "__main__":
     success = test_kis_api()
     if success:
-        print("\n✅ 한국투자증권 API 테스트가 성공적으로 완료되었습니다!")
+        print("\nSuccess: 한국투자증권 API 테스트가 성공적으로 완료되었습니다!")
     else:
-        print("\n❌ 한국투자증권 API 테스트에 실패했습니다.")
+        print("\nError: 한국투자증권 API 테스트에 실패했습니다.")
         sys.exit(1)
