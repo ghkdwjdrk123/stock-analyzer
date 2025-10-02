@@ -3,6 +3,7 @@
 """
 from typing import List, Dict, Any, Optional
 from app.brokers.kis_broker import KISBroker
+from app.brokers.kiwoom_broker import KiwoomBroker
 from app.brokers.base_broker import BaseBroker
 from app.utils.exceptions import BrokerError
 from app.utils.logger import get_logger
@@ -34,6 +35,10 @@ class BrokerService:
             try:
                 if api_type == 'kis':
                     broker = KISBroker(broker_config)
+                    self.brokers[broker_name] = broker
+                    logger.info(f"브로커 {broker_name} 초기화 완료")
+                elif api_type == 'kiwoom':
+                    broker = KiwoomBroker(broker_config)
                     self.brokers[broker_name] = broker
                     logger.info(f"브로커 {broker_name} 초기화 완료")
                 else:

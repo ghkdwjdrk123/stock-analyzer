@@ -24,6 +24,10 @@ matplotlib==3.8.2
 requests==2.31.0
 websocket-client==1.6.4
 
+# 키움증권 API (Windows only)
+pywin32==306
+PyQt5==5.15.10
+
 # 유틸리티
 python-dotenv==1.0.0
 cryptography==41.0.7

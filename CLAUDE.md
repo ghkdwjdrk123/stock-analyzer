@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Stock Analyzer is a multi-broker portfolio analysis application that integrates with Korean investment broker APIs (primarily 한국투자증권/KIS) to automatically collect and analyze account data. The application features both a console interface and a Streamlit-based GUI for data visualization and analysis.
+Stock Analyzer is a multi-broker portfolio analysis application that integrates with Korean investment broker APIs (한국투자증권/KIS, 키움증권/Kiwoom) to automatically collect and analyze account data. The application features both a console interface and a Streamlit-based GUI for data visualization and analysis.
 
 ## Architecture
 
 ### Core Components
 
-- **Broker System**: Abstract broker interface (`app/brokers/base_broker.py`) with concrete implementations (KIS broker)
+- **Broker System**: Abstract broker interface (`app/brokers/base_broker.py`) with concrete implementations (KIS broker, Kiwoom broker)
 - **Database Layer**: SQLAlchemy ORM models for accounts, balances, holdings, transactions, and aggregation data
 - **Service Layer**: Business logic in `app/services/` (BrokerService, DataCollector, AnalysisService)
 - **Token Management**: Secure, broker-specific token handling with automatic refresh (`app/utils/token_manager.py`)
@@ -70,6 +70,9 @@ python test_token_manager.py
 # Test KIS API integration
 python test_kis_api.py
 
+# Test Kiwoom API integration (Windows only)
+python test_kiwoom_broker.py
+
 # Test with real data (requires valid credentials)
 python test_with_real_data.py
 
@@ -88,6 +91,19 @@ python check_database.py
 KIS_APP_KEY=your_app_key
 KIS_APP_SECRET=your_app_secret
 
+# Kiwoom Securities API (Windows only)
+KIWOOM_ACCOUNT_NUMBER=your_10_digit_account_number
+KIWOOM_ACCOUNT_PASSWORD=your_account_password
+KIWOOM_CERT_PASSWORD=your_certificate_password
+KIWOOM_DELISTED_FILTER=0
+KIWOOM_PASSWORD_MEDIA=00
+KIWOOM_EXCHANGE_CODE=KRX
+
+# Kiwoom TR Codes
+KIWOOM_TR_BALANCE=opw00018
+KIWOOM_TR_HOLDINGS=OPW00004
+KIWOOM_TR_ACCOUNT_EVAL=opw00001
+
 # Optional: Email notifications
 EMAIL_USERNAME=your_email@gmail.com
 EMAIL_PASSWORD=your_app_password
@@ -100,8 +116,10 @@ EMAIL_PASSWORD=your_app_password
 
 ### Broker Configuration
 - Settings in `config/config.json` under `brokers` array
-- Token files stored in `token/{broker_name}/tokens.json`
-- Automatic token refresh when within 5 minutes of expiry
+- **KIS (한국투자증권)**: REST API, token-based authentication
+- **Kiwoom (키움증권)**: COM/ActiveX API (Windows only), session-based authentication
+- Token files stored in `token/{broker_name}/tokens.json` (KIS only)
+- Automatic token refresh when within 5 minutes of expiry (KIS only)
 
 ## Code Structure Patterns
 
@@ -191,7 +209,136 @@ EMAIL_PASSWORD=your_app_password
 3. Test with `python check_database.py`
 4. Consider data migration for existing installations
 
-## Recent Updates (2024-09-30)
+## Recent Updates
+
+### 2025-10-01: Kiwoom Securities Integration (32-bit Subprocess Architecture)
+
+#### Multi-Broker Architecture Implementation
+- **New Broker**: Kiwoom Securities (키움증권) support added
+- **Architecture**: 32-bit subprocess method (64-bit main + 32-bit worker)
+- **Platform**: Windows only (requires Kiwoom OpenAPI+ module)
+
+#### Key Features
+1. **32-bit Subprocess Architecture**
+   - Main program runs in 64-bit Python environment
+   - Kiwoom API runs in separate 32-bit Python subprocess
+   - Automatic subprocess execution on API calls
+   - JSON-based IPC communication
+
+2. **KiwoomBroker Class** (`app/brokers/kiwoom_broker.py`)
+   - Implements `BaseBroker` interface
+   - Subprocess management with timeout handling
+   - Unified interface same as KIS broker
+   - Account caching for performance
+
+3. **Worker Script** (`kiwoom_worker_32.py`)
+   - Standalone 32-bit Python script
+   - QAxWidget-based COM object handling
+   - Commands: get_accounts, get_balance, get_holdings
+   - JSON output for easy parsing
+
+4. **Environment Variable Management**
+   - All Kiwoom settings in `env` file
+   - `PYTHON32_PATH`: Path to 32-bit Python executable
+   - TR codes configurable (OPW00004, opw00018, etc.)
+   - Account credentials securely stored
+   - No hardcoded values in source code
+
+5. **TR Implementation**
+   - **OPW00004**: Account evaluation status (계좌평가현황)
+   - **opw00018**: Deposit details (예수금상세현황)
+   - Profit rate calculation with 4-digit decimal handling
+
+6. **BrokerService Integration**
+   - Automatic broker type detection
+   - Unified interface for KIS and Kiwoom
+   - Same `get_balance()`, `get_holdings()` methods
+   - Transparent subprocess execution
+
+#### Technical Details
+- **Main Program**: 64-bit Python (any version)
+- **Worker Process**: 32-bit Python 3.9+ with pywin32==306, PyQt5==5.15.10
+- **Communication**: subprocess.run() with JSON serialization
+- **OCX Registration**: 32-bit regsvr32 in SysWOW64
+- **Data Parsing**: Custom parsers for each TR response
+- **Error Handling**: Comprehensive subprocess and COM error catching
+
+#### Setup Guide
+- Detailed setup instructions: `docs/KIWOOM_SETUP.md`
+- 32-bit Python installation guide
+- OCX registration procedure
+- Environment variable configuration
+- Troubleshooting tips
+
+#### Requirements
+1. Windows OS (64-bit)
+2. 32-bit Python 3.9+ (separate installation)
+3. Kiwoom OpenAPI+ module installed and registered
+4. Valid Kiwoom account
+5. HTS installation NOT required (OpenAPI+ module only)
+
+#### Configuration Example
+```json
+{
+  "name": "키움증권",
+  "api_type": "kiwoom",
+  "enabled": true,
+  "platform": "windows"
+}
+```
+
+```bash
+# env file
+PYTHON32_PATH=C:\Python39-32\python.exe
+KIWOOM_ACCOUNT_NUMBER=1234567890
+KIWOOM_ACCOUNT_PASSWORD=****
+```
+
+### 2025-09-30: Dashboard and Database Tools
+
+### Database Commands Implementation
+- **New Feature**: Comprehensive database viewing and analysis tools
+- **Files Added**:
+  - `view_database.py` - Main table viewer with filtering options
+  - `db_commands.py` - Quick query commands
+  - `db_analysis.py` - Advanced analysis tools
+  - `db.bat` - Windows batch shortcuts
+  - `show_table_columns.py` - Schema inspection tool
+  - `DATABASE_COMMANDS.md` - Complete usage documentation
+- **Capabilities**: View all 10 database tables with 149 total columns, perform portfolio analysis
+
+### Data Collection Enhancement
+- **Auto Collection**: Automatic account data retrieval when today's data is missing
+- **Manual Collection**: Sidebar button for on-demand data collection from all active accounts
+- **Location**: `gui/main.py` sidebar, `gui/pages_backup/dashboard.py`
+- **Session Management**: Prevents duplicate data collection runs
+
+### GUI Architecture Improvements
+- **Transaction Features Disabled**: Removed transaction-related UI elements (API not implemented)
+  - Removed "Transactions" menu from main navigation
+  - Disabled transaction display in Dashboard
+  - Removed "거래 패턴 분석" from Analysis charts
+- **Dashboard Simplification**:
+  - Removed chart functionality (moved to Analysis page)
+  - Focus on key metrics display only
+  - Added Analysis page navigation guidance
+- **Chart Enhancements**:
+  - Fixed date formatting (removed time information)
+  - Improved chart margins and visibility
+  - Updated "일일 수익률" → "일자별 수익률" for clarity
+  - Enhanced color schemes for better data visualization
+
+### Database Schema Verification
+- **Normalization Check**: Confirmed proper database design with separated broker/account tables
+- **Data Display**: Fixed UI to show broker and account information separately (not concatenated)
+- **Schema Documentation**: Complete column listing for all 10 tables
+
+### Key Metrics Improvements
+- **Dashboard Metrics**: Clarified percentage displays
+  - Total balance: Shows actual profit/loss rate
+  - Cash balance: Shows portfolio weight percentage
+  - Stock balance: Shows investment return rate
+  - Holdings: Shows profitable holdings count
 
 ### Welcome Dashboard Implementation
 - **New Feature**: Implemented welcome dashboard for initial user experience
@@ -204,22 +351,3 @@ EMAIL_PASSWORD=your_app_password
   - Account registration status display
   - FAQ and technical stack information
   - Footer with version info
-
-### Documentation Structure
-- **Added**: Comprehensive documentation system in `docs/` directory
-- **Structure**:
-  ```
-  docs/
-  ├── README.md              # Documentation overview
-  ├── gui/
-  │   └── dashboard.md       # Detailed dashboard documentation
-  ├── architecture.md        # System architecture (planned)
-  ├── development.md         # Development guidelines (planned)
-  └── user-guide.md         # User manual (planned)
-  ```
-
-### GUI Enhancements
-- **Initial Screen**: Enhanced user experience for first-time users
-- **Account Detection**: Automatic detection of registered accounts
-- **Guidance System**: Clear instructions for getting started
-- **Visual Improvements**: Better layout and styling for welcome screen

@@ -1,37 +1,68 @@
 # Stock Analyzer
 
-한국투자증권 API를 활용한 계좌 자동 분석 프로그램입니다.
+다중 증권사 API를 활용한 통합 계좌 분석 프로그램입니다.
 
 ## 주요 기능
 
-- 한국투자증권 API 연동
+### 🔌 API 연동
+- **한국투자증권 (KIS)**: REST API 연동
+- **키움증권 (Kiwoom)**: OpenAPI 연동 (Windows 전용)
+- **토큰 파일 관리** (자동 저장/로드/갱신 - KIS)
 - 계좌 정보 자동 조회
 - 잔고 및 보유종목 조회
-- 거래내역 수집
-- **토큰 파일 관리** (자동 저장/로드/갱신)
-- 데이터베이스 저장 및 관리
-- 로깅 및 에러 처리
+
+### 📊 데이터 관리 및 분석
+- SQLAlchemy 기반 데이터베이스 (10개 테이블, 149개 컬럼)
+- 포트폴리오 성과 분석
+- 종목별 수익률 추적
+- 월별 성과 요약
+
+### 🖥️ 사용자 인터페이스
+- **Streamlit 기반 웹 GUI** (메인 인터페이스)
+- 실시간 차트 및 시각화
+- 계좌별 다중 선택 지원
+- 자동 데이터 수집 기능
+
+### 🔍 데이터베이스 도구
+- 명령줄 기반 데이터 조회 도구
+- 고급 포트폴리오 분석 스크립트
+- 스키마 및 테이블 구조 확인
 
 ## 프로젝트 구조
 
 ```
 Stock Analyzer/
-├── app/
+├── app/                  # 메인 애플리케이션
 │   ├── brokers/          # 브로커 API 연동
-│   ├── models/           # 데이터베이스 모델
+│   ├── models/           # 데이터베이스 모델 (10개 테이블)
 │   ├── services/         # 비즈니스 로직
-│   ├── utils/            # 유틸리티
-│   └── main.py           # 메인 애플리케이션
+│   └── utils/            # 유틸리티 (차트, 데이터베이스)
+├── gui/                  # Streamlit 웹 인터페이스
+│   ├── pages_backup/     # 페이지별 모듈
+│   └── utils/            # GUI 전용 유틸리티
+├── tests/                # 테스트 파일
+│   ├── test_kis_api.py
+│   ├── test_kiwoom_broker.py
+│   ├── test_token_manager.py
+│   └── test_with_real_data.py
+├── scripts/              # 유틸리티 스크립트
+│   ├── db_commands.py    # DB 빠른 조회
+│   ├── db_analysis.py    # 고급 분석
+│   ├── view_database.py  # DB 테이블 조회
+│   ├── manage_tokens.py  # 토큰 관리
+│   └── collect_today_data.py
+├── workers/              # 워커 프로세스
+│   └── kiwoom_worker_32.py  # 키움 32비트 워커
+├── docs/                 # 문서
+│   ├── KIWOOM_SETUP.md   # 키움 설정 가이드
+│   ├── DATABASE_COMMANDS.md
+│   └── *.bat             # 배치 스크립트
 ├── config/               # 설정 파일
 ├── data/                 # 데이터베이스 파일
 ├── token/                # 토큰 파일 (증권사별)
-│   ├── kis/              # 한국투자증권 토큰
-│   └── kiwoom/           # 키움증권 토큰
 ├── logs/                 # 로그 파일
-├── rules/                # 참고 자료
-├── main.py               # 실행 파일
-├── test_token_manager.py # 토큰 관리 테스트
-└── manage_tokens.py      # 토큰 관리 유틸리티
+├── main.py               # 콘솔 실행 파일
+└── run_gui.py            # GUI 실행 파일
 ```
 
 ## 설치 및 설정
@@ -55,24 +86,103 @@ cp env.example env
 KIS_APP_KEY=your_actual_app_key
 KIS_APP_SECRET=your_actual_app_secret
 
+# 키움증권 API 설정 (Windows 사용자만)
+KIWOOM_ACCOUNT_NUMBER=your_10_digit_account_number
+KIWOOM_ACCOUNT_PASSWORD=your_account_password
+KIWOOM_CERT_PASSWORD=your_certificate_password
+
 # 이메일 알림 설정 (선택사항)
 EMAIL_USERNAME=your_actual_email@gmail.com
 EMAIL_PASSWORD=your_actual_email_password
 ```
 
-### 3. 설정 파일 확인
+### 3. 키움증권 설정 (Windows 사용자만)
+
+키움증권 API는 **32비트 서브프로세스 방식**으로 동작합니다. 자세한 설정 가이드는 [KIWOOM_SETUP.md](docs/KIWOOM_SETUP.md)를 참고하세요.
+
+**핵심 요구사항:**
+
+1. **32비트 Python 설치**
+   - Python 3.9 또는 3.10 (32-bit) 별도 설치
+   - 예: `C:\Python39-32\python.exe`
+
+2. **키움 OpenAPI+ 모듈 설치**
+   - [키움증권 OpenAPI+ 다운로드](https://www.kiwoom.com/h/customer/download/VOpenApiInfoView)
+   - 관리자 권한으로 설치 (기본 경로: `C:\OpenAPI\`)
+   - 영웅문(HTS) 설치는 **선택사항** (모듈만 있으면 동작)
+
+3. **OCX 등록 (32비트)**
+   ```bash
+   # 관리자 권한 명령 프롬프트
+   C:\Windows\SysWOW64\regsvr32.exe C:\OpenAPI\khopenapi.ocx
+   ```
+
+4. **환경변수 설정**
+   ```bash
+   # env 파일에 추가
+   PYTHON32_PATH=C:\Python39-32\python.exe
+   KIWOOM_ACCOUNT_NUMBER=1234567890
+   KIWOOM_ACCOUNT_PASSWORD=****
+   ```
+
+5. **32비트 Python 패키지 설치**
+   ```bash
+   C:\Python39-32\python.exe -m pip install pywin32==306 PyQt5==5.15.10 python-dotenv
+   ```
+
+**상세 가이드**: [KIWOOM_SETUP.md](docs/KIWOOM_SETUP.md) 문서를 반드시 읽어주세요.
+
+### 4. 설정 파일 확인
 
 `config/config.json` 파일은 일반적인 설정을 포함하며, 민감한 정보는 환경변수에서 로드됩니다.
 
 ## 사용법
 
-### 1. 기본 실행
+### 1. 🖥️ 웹 GUI 실행 (권장)
 
 ```bash
+# Streamlit 웹 인터페이스 실행
+python run_gui.py
+# 또는
+streamlit run gui/main.py --server.port 8501
+
+# 브라우저에서 http://localhost:8501 접속
+```
+
+### 2. 🔧 콘솔 애플리케이션
+
+```bash
+# 콘솔 기반 실행
 python main.py
 ```
 
-### 2. 토큰 관리
+### 3. 📊 데이터베이스 조회 도구
+
+```bash
+# 모든 테이블 요약 보기
+python view_database.py --summary
+
+# 특정 테이블 조회
+python view_database.py holdings
+
+# 빠른 포트폴리오 현황
+python db_commands.py status
+
+# 고급 포트폴리오 분석
+python db_analysis.py all
+
+# 데이터베이스 스키마 확인
+python show_table_columns.py summary
+
+# Windows 사용자 - 간편 명령어
+db status           # DB 현황
+db holdings         # 보유종목
+db profit           # 수익률 요약
+```
+
+자세한 데이터베이스 도구 사용법은 [DATABASE_COMMANDS.md](DATABASE_COMMANDS.md)를 참고하세요.
+
+### 4. 토큰 관리
 
 ```bash
 # 토큰 관리 테스트
@@ -89,7 +199,19 @@ python manage_tokens.py delete "kis"
 python manage_tokens.py delete "kiwoom"
 ```
 
-### 3. 한국투자증권 API 키 발급
+### 5. 브로커 API 테스트
+
+```bash
+# 한국투자증권 API 테스트
+python test_kis_api.py
+
+# 키움증권 API 테스트 (Windows 사용자만)
+python test_kiwoom_broker.py
+# 옵션 1: 전체 테스트 (로그인 포함)
+# 옵션 2: 초기화 테스트만
+```
+
+### 6. 한국투자증권 API 키 발급
 
 1. [한국투자증권 OpenAPI](https://apiportal.koreainvestment.com/) 접속
 2. 회원가입 및 로그인

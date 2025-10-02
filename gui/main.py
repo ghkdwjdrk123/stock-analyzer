@@ -66,8 +66,8 @@ def main():
         # 메뉴 선택
         selected_page = option_menu(
             "Stock Analyzer",
-            ["Dashboard", "Accounts", "Holdings", "Transactions", "Analysis"],
-            icons=['house', 'bank', 'graph-up', 'list-ul', 'bar-chart'],
+            ["Dashboard", "Accounts", "Holdings", "Analysis"],  # Transactions 제거
+            icons=['house', 'bank', 'graph-up', 'bar-chart'],  # list-ul 아이콘 제거
             menu_icon="app-indicator",
             default_index=0,
             styles={
@@ -132,15 +132,50 @@ def main():
             st.session_state.selected_account_ids = []
         
         st.markdown("---")
-        
+
+        # 계좌 데이터 조회 버튼
+        st.markdown("### Data Management")
+
+        # 계좌 전체 정보 조회 버튼
+        if st.button("🔄 계좌 전체 정보 조회", type="primary", use_container_width=True):
+            try:
+                with st.spinner("활성 계좌 정보를 조회하는 중..."):
+                    # DataService를 통해 전체 활성 계좌 데이터 수집 실행
+                    collection_result = data_service.collect_all_active_accounts_data()
+
+                    # 결과에 따른 메시지 표시
+                    if collection_result['success']:
+                        st.success(collection_result['message'])
+
+                        # 실패한 계좌가 있는 경우 상세 정보 표시
+                        if collection_result['failed_accounts']:
+                            with st.expander("⚠️ 데이터 수집에 실패한 계좌", expanded=False):
+                                for failed in collection_result['failed_accounts']:
+                                    st.error(f"• {failed['broker_name']} - {failed['account_number']}: {failed['error']}")
+
+                        st.balloons()
+                        # 페이지 새로고침
+                        import time
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(collection_result['message'])
+                        st.info("💡 Tip: API 연결 상태나 설정을 확인해주세요.")
+
+            except Exception as e:
+                st.error(f"❌ 계좌 정보 조회 중 오류가 발생했습니다: {str(e)}")
+                st.info("💡 Tip: API 연결 상태나 설정을 확인해주세요.")
+
+        st.markdown("---")
+
         # 앱 정보
         st.markdown("### App Info")
         st.info("""
         **Stock Analyzer v1.0**
-        
+
         Portfolio Analysis
         Real-time Data
-        Transaction Management
+        Investment Tracking
         """)
     
     # 메인 컨텐츠 영역 - 선택된 페이지에 따라 표시
@@ -153,9 +188,9 @@ def main():
     elif selected_page == "Holdings":
         from gui.pages_backup import holdings
         holdings.main()
-    elif selected_page == "Transactions":
-        from gui.pages_backup import transactions
-        transactions.main()
+    # elif selected_page == "Transactions":  # 거래내역 기능 비활성화
+    #     from gui.pages_backup import transactions
+    #     transactions.main()
     elif selected_page == "Analysis":
         from gui.pages_backup import analysis
         analysis.main()

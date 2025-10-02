@@ -36,8 +36,8 @@ def main():
                 "포트폴리오 성과",
                 "보유종목 비중",
                 "보유종목 수익률",
-                "월별 수익률",
-                "거래 패턴 분석"
+                "월별 수익률"
+                # "거래 패턴 분석"  # 거래내역 기능 비활성화로 제거
             ],
             key="analysis_chart_type"
         )
@@ -115,19 +115,19 @@ def main():
                     else:
                         st.warning("월별 수익률 차트를 생성할 수 없습니다.")
         
-        elif chart_type == "거래 패턴 분석":
-            st.subheader("Trading Pattern Analysis")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                analysis_period = st.selectbox("분석 기간", ["최근 1개월", "최근 3개월", "최근 6개월", "최근 1년"])
-            with col2:
-                show_trend = st.checkbox("트렌드 라인 표시", value=True)
-            
-            if st.button("차트 생성", type="primary"):
-                with st.spinner("거래 패턴 차트를 생성하는 중..."):
-                    # 거래 패턴 분석 차트 생성 (추후 구현)
-                    st.info("거래 패턴 분석 기능은 추후 구현 예정입니다.")
+        # elif chart_type == "거래 패턴 분석":  # 거래내역 기능 비활성화
+        #     st.subheader("Trading Pattern Analysis")
+        #
+        #     col1, col2 = st.columns(2)
+        #     with col1:
+        #         analysis_period = st.selectbox("분석 기간", ["최근 1개월", "최근 3개월", "최근 6개월", "최근 1년"])
+        #     with col2:
+        #         show_trend = st.checkbox("트렌드 라인 표시", value=True)
+        #
+        #     if st.button("차트 생성", type="primary"):
+        #         with st.spinner("거래 패턴 차트를 생성하는 중..."):
+        #             # 거래 패턴 분석 차트 생성 (추후 구현)
+        #             st.info("거래 패턴 분석 기능은 추후 구현 예정입니다.")
         
         # 차트 설명
         st.subheader("Chart Explanation")
@@ -136,7 +136,7 @@ def main():
             st.info("""
             **포트폴리오 성과 차트**는 시간에 따른 총 자산 변화와 수익률을 보여줍니다.
             - 상단 차트: 총 자산, 평가금액, 현금잔고 변화
-            - 하단 차트: 일일 수익률 변화
+            - 하단 차트: 일자별 수익률 변화
             """)
         
         elif chart_type == "보유종목 비중":
@@ -160,13 +160,13 @@ def main():
             - 계절성이나 특정 월의 성과 패턴을 파악할 수 있습니다
             """)
         
-        elif chart_type == "거래 패턴 분석":
-            st.info("""
-            **거래 패턴 분석**은 거래 빈도와 패턴을 분석합니다.
-            - 일별 거래량 변화
-            - 매수/매도 비율
-            - 거래 금액 분포
-            """)
+        # elif chart_type == "거래 패턴 분석":  # 거래내역 기능 비활성화
+        #     st.info("""
+        #     **거래 패턴 분석**은 거래 빈도와 패턴을 분석합니다.
+        #     - 일별 거래량 변화
+        #     - 매수/매도 비율
+        #     - 거래 금액 분포
+        #     """)
     
     except Exception as e:
         st.error(f"분석 차트를 생성하는 중 오류가 발생했습니다: {str(e)}")

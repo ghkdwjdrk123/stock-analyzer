@@ -33,13 +33,14 @@ class ChartGenerator:
             
             # DataFrame 생성
             df = pd.DataFrame(daily_balances)
-            df['balance_date'] = pd.to_datetime(df['balance_date'])
+            df['balance_date'] = pd.to_datetime(df['balance_date']).dt.date  # 날짜만 추출 (시간 제거)
+            df['balance_date_str'] = df['balance_date'].astype(str)  # 문자열로 변환
             df = df.sort_values('balance_date')
             
             # 서브플롯 생성 (2개 행)
             fig = make_subplots(
                 rows=2, cols=1,
-                subplot_titles=('총 자산 변화', '일일 수익률'),
+                subplot_titles=('총 자산 변화', '일자별 수익률'),
                 vertical_spacing=0.1,
                 row_heights=[0.7, 0.3]
             )
@@ -47,12 +48,12 @@ class ChartGenerator:
             # 총 자산 차트 (일일 데이터이므로 마커 중심, 점선 연결)
             fig.add_trace(
                 go.Scatter(
-                    x=df['balance_date'],
+                    x=df['balance_date_str'],
                     y=df['total_balance'],
                     mode='markers+lines' if len(df) > 1 else 'markers',
                     name='총 자산',
-                    line=dict(color=self.default_colors[0], width=1.5, dash='dot'),
-                    marker=dict(size=8, color=self.default_colors[0]),
+                    line=dict(color='#1f77b4', width=2.5),  # 진한 파란색, 굵은 선
+                    marker=dict(size=10, color='#1f77b4'),
                     hovertemplate='<b>%{fullData.name}</b><br>' +
                                 '날짜: %{x}<br>' +
                                 '총 자산: %{y:,.0f}원<br>' +
@@ -64,12 +65,12 @@ class ChartGenerator:
             # 평가금액 차트 (일일 데이터이므로 마커 중심, 점선 연결)
             fig.add_trace(
                 go.Scatter(
-                    x=df['balance_date'],
+                    x=df['balance_date_str'],
                     y=df['evaluation_amount'],
                     mode='markers+lines' if len(df) > 1 else 'markers',
                     name='평가금액',
-                    line=dict(color=self.default_colors[1], width=1.5, dash='dot'),
-                    marker=dict(size=7, color=self.default_colors[1]),
+                    line=dict(color='#ff7f0e', width=2),  # 진한 주황색
+                    marker=dict(size=8, color='#ff7f0e'),
                     hovertemplate='<b>%{fullData.name}</b><br>' +
                                 '날짜: %{x}<br>' +
                                 '평가금액: %{y:,.0f}원<br>' +
@@ -81,12 +82,12 @@ class ChartGenerator:
             # 현금잔고 차트 (일일 데이터이므로 마커 중심, 점선 연결)
             fig.add_trace(
                 go.Scatter(
-                    x=df['balance_date'],
+                    x=df['balance_date_str'],
                     y=df['cash_balance'],
                     mode='markers+lines' if len(df) > 1 else 'markers',
                     name='현금잔고',
-                    line=dict(color=self.default_colors[2], width=1.5, dash='dot'),
-                    marker=dict(size=7, color=self.default_colors[2]),
+                    line=dict(color='#2ca02c', width=2),  # 진한 초록색
+                    marker=dict(size=8, color='#2ca02c'),
                     hovertemplate='<b>%{fullData.name}</b><br>' +
                                 '날짜: %{x}<br>' +
                                 '현금잔고: %{y:,.0f}원<br>' +
@@ -94,15 +95,15 @@ class ChartGenerator:
                 ),
                 row=1, col=1
             )
-            
-            # 일일 수익률 차트
+
+            # 일자별 수익률 차트
             fig.add_trace(
                 go.Bar(
-                    x=df['balance_date'],
+                    x=df['balance_date_str'],
                     y=df['profit_loss_rate'],
-                    name='일일 수익률 (%)',
+                    name='일자별 수익률 (%)',
                     marker_color=['green' if x >= 0 else 'red' for x in df['profit_loss_rate']],
-                    hovertemplate='<b>일일 수익률</b><br>' +
+                    hovertemplate='<b>일자별 수익률</b><br>' +
                                 '날짜: %{x}<br>' +
                                 '수익률: %{y:.2f}%<br>' +
                                 '<extra></extra>'
@@ -127,15 +128,27 @@ class ChartGenerator:
                     xanchor="right",
                     x=1
                 ),
-                **self.chart_theme['layout']
+                margin={'l': 100, 'r': 50, 't': 80, 'b': 50},  # 왼쪽 여백 증가로 y축 레이블 공간 확보
+                paper_bgcolor='white',
+                plot_bgcolor='white',
+                font={'family': 'Arial, sans-serif', 'size': 12}
             )
             
             # Y축 포맷팅
             fig.update_yaxes(tickformat=',.0f', row=1, col=1)
             fig.update_yaxes(tickformat='.2f', row=2, col=1)
             
-            # X축 설정
-            fig.update_xaxes(title_text="날짜", row=2, col=1)
+            # X축 설정 - 날짜 라벨 제거하고 카테고리 타입으로 설정
+            fig.update_xaxes(
+                title_text="",  # 날짜 라벨 제거
+                type="category",  # 카테고리 타입으로 시간 정보 완전 제거
+                row=1, col=1
+            )
+            fig.update_xaxes(
+                title_text="",  # 날짜 라벨 제거
+                type="category",  # 카테고리 타입으로 시간 정보 완전 제거
+                row=2, col=1
+            )
             
             logger.info("포트폴리오 성과 차트 생성 완료")
             return fig
@@ -308,8 +321,17 @@ class ChartGenerator:
             fig.update_yaxes(tickformat=',.0f', row=1, col=1)
             fig.update_yaxes(tickformat='.2f', row=2, col=1)
             
-            # X축 설정
-            fig.update_xaxes(title_text="월", row=2, col=1)
+            # X축 설정 - 월별 데이터는 년-월만 표시
+            fig.update_xaxes(
+                title_text="월",
+                tickformat="%Y-%m",  # 년-월만 표시
+                row=1, col=1
+            )
+            fig.update_xaxes(
+                title_text="월",
+                tickformat="%Y-%m",  # 년-월만 표시
+                row=2, col=1
+            )
             
             logger.info("월별 요약 차트 생성 완료")
             return fig
